@@ -20,7 +20,9 @@ import {
   Mail,
   History,
   Check,
-  RefreshCw
+  RefreshCw,
+  HardHat,
+  KeyRound
 } from 'lucide-react';
 import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
@@ -123,7 +125,14 @@ const AppointmentDetails = () => {
       setSendingEmail(true);
       const res = await hrService.sendAppointment(id, confirmResend);
       if (res.success) {
-        toast.success(res.message || 'Appointment letter sent to candidate!');
+        if (res.emailResult?.simulated) {
+          toast.warning(
+            '⚠️ Simulated Dispatch: Real email was not delivered because SMTP credentials are not configured in server/.env.',
+            { autoClose: 7000 }
+          );
+        } else {
+          toast.success(res.message || 'Appointment letter dispatched successfully to candidate inbox!');
+        }
         setIsSendEmailModalOpen(false);
         fetchAppointment();
       }
@@ -373,6 +382,65 @@ const AppointmentDetails = () => {
         </div>
       )}
 
+      {/* Worker Account Link / Setup Status */}
+      {(appointment.workerId || candidate.workerId) ? (
+        <div className="p-4 bg-emerald-50/80 border border-emerald-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-emerald-600 text-white shadow-sm">
+              <HardHat className="w-5 h-5" />
+            </div>
+            <div className="text-xs">
+              <div className="flex items-center gap-2">
+                <p className="font-bold text-emerald-950">Active Worker Workspace Linked</p>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-200/60 text-emerald-800">
+                  Onboarded
+                </span>
+              </div>
+              <p className="text-emerald-700 mt-0.5">
+                Worker account active for <strong>{appointment.workerId?.name || candidate.name}</strong> ({appointment.workerId?.email || candidate.email}).
+              </p>
+            </div>
+          </div>
+          {isAdmin && (
+            <Link
+              to="/admin/workers"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs transition-colors shadow-sm self-start sm:self-center"
+            >
+              <HardHat className="w-3.5 h-3.5" />
+              <span>View Workers Roster</span>
+            </Link>
+          )}
+        </div>
+      ) : (isApproved || isSent || appointment.status === 'ACCEPTED') && (
+        <div className="p-4 bg-gradient-to-r from-blue-50/90 via-indigo-50/70 to-slate-50 border border-blue-200/90 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-blue-600 text-white shadow-sm">
+              <KeyRound className="w-5 h-5" />
+            </div>
+            <div className="text-xs">
+              <div className="flex items-center gap-2">
+                <p className="font-bold text-blue-950">Approved Candidate Ready for Worker Setup</p>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-600 text-white">
+                  Action Available
+                </span>
+              </div>
+              <p className="text-blue-700 mt-0.5">
+                Candidate is approved. Admin can configure their login email ID and initial password to activate their worker workspace.
+              </p>
+            </div>
+          </div>
+          {isAdmin && (
+            <Link
+              to="/admin/workers"
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs shadow-sm transition-colors self-start sm:self-center"
+            >
+              <KeyRound className="w-3.5 h-3.5" />
+              <span>Setup Worker in Admin</span>
+            </Link>
+          )}
+        </div>
+      )}
+
       {/* Main Grid: Details & Workflow History */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left 2 Cols: Appointment Terms & Candidate */}
@@ -456,6 +524,59 @@ const AppointmentDetails = () => {
               </div>
             </div>
           </Card>
+
+          {/* Client & Project Context Card */}
+          {(appointment.projectId || appointment.project || appointment.clientId || appointment.client) && (
+            <Card className="space-y-3">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+                  <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-800 text-[10px] font-bold">
+                    Cross-Module
+                  </span>
+                  <span>ClientFlow Project Context</span>
+                </h2>
+                {(appointment.projectId?._id || appointment.projectId || appointment.project?._id || appointment.project) && (
+                  <Link
+                    to={`/admin/projects/${appointment.projectId?._id || appointment.projectId || appointment.project?._id || appointment.project}`}
+                    className="text-xs font-semibold text-blue-600 hover:text-blue-700 hover:underline flex items-center gap-1"
+                  >
+                    <span>View Project</span> &rarr;
+                  </Link>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 text-xs">
+                <div>
+                  <span className="text-slate-500 block text-[11px]">Client:</span>
+                  <span className="font-bold text-slate-900">
+                    {appointment.clientId?.companyName || appointment.clientId?.name || appointment.client?.name || 'Internal'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-500 block text-[11px]">Linked Project:</span>
+                  <span className="font-bold text-slate-900">
+                    {appointment.projectId?.name || appointment.project?.name || 'Internal GENFREX Project'}
+                  </span>
+                </div>
+                {appointment.requirementId && (
+                  <div>
+                    <span className="text-slate-500 block text-[11px]">Requirement / Task:</span>
+                    <span className="font-semibold text-slate-800">
+                      {appointment.requirementId?.title || appointment.requirement?.title || 'Linked Requirement'}
+                    </span>
+                  </div>
+                )}
+                {appointment.workerId && (
+                  <div>
+                    <span className="text-slate-500 block text-[11px]">Assigned Worker / Mentor:</span>
+                    <span className="font-semibold text-slate-800">
+                      {appointment.workerId?.name || appointment.assignedWorker?.name || 'Assigned Engineer'}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </Card>
+          )}
         </div>
 
         {/* Right Col: Timeline & Approval Trail */}

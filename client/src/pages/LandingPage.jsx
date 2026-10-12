@@ -29,7 +29,7 @@ const LandingPage = () => {
   const handleQuickDemo = async (role) => {
     try {
       if (role === 'ADMIN') {
-        await login('admin@clientportal.com', 'Admin@123');
+        await login('admin@genfrex.com', 'Admin@123');
         navigate('/admin/dashboard');
       } else if (role === 'HR') {
         await login('hr@genfrex.com', 'Hr@123');

@@ -50,6 +50,34 @@ const userSchema = new mongoose.Schema(
     avatar: {
       type: String,
       default: ''
+    },
+    status: {
+      type: String,
+      enum: ['ACTIVE', 'INACTIVE'],
+      default: 'ACTIVE',
+      required: true
+    },
+    isActive: {
+      type: Boolean,
+      default: true,
+      required: true
+    },
+    tokenVersion: {
+      type: Number,
+      default: 0,
+      required: true
+    },
+    candidateId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Candidate'
+    },
+    appointmentLetterId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'AppointmentLetter'
+    },
+    hiredFromCandidate: {
+      type: Boolean,
+      default: false
     }
   },
   {

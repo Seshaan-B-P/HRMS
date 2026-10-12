@@ -1,4 +1,5 @@
 const Candidate = require('../models/Candidate');
+const Project = require('../models/Project');
 const { recordHRAudit } = require('../services/hrService');
 
 /**
@@ -6,26 +7,49 @@ const { recordHRAudit } = require('../services/hrService');
  */
 const getCandidates = async (req, res, next) => {
   try {
-    const { search, status, employmentType, department, page = 1, limit = 20 } = req.query;
+    const {
+      search,
+      status,
+      employmentType,
+      department,
+      source,
+      projectId,
+      clientId,
+      page = 1,
+      limit = 20
+    } = req.query;
 
     const query = {};
     if (status) query.candidateStatus = status;
     if (employmentType) query.employmentType = employmentType;
     if (department) query.department = department;
+    if (source) query.source = source;
+    if (projectId) query.$or = [{ projectId }, { project: projectId }];
+    if (clientId) query.$or = [{ clientId }, { client: clientId }];
 
     if (search) {
-      query.$or = [
+      const searchOr = [
         { name: { $regex: search, $options: 'i' } },
         { email: { $regex: search, $options: 'i' } },
         { designation: { $regex: search, $options: 'i' } },
         { phone: { $regex: search, $options: 'i' } }
       ];
+      if (query.$or) {
+        query.$and = [{ $or: query.$or }, { $or: searchOr }];
+        delete query.$or;
+      } else {
+        query.$or = searchOr;
+      }
     }
 
     const skip = (parseInt(page, 10) - 1) * parseInt(limit, 10);
     const total = await Candidate.countDocuments(query);
     const candidates = await Candidate.find(query)
       .populate('createdBy', 'name email role')
+      .populate('client', 'name email companyName phone')
+      .populate('project', 'name status stage client')
+      .populate('requirement', 'title description priority status')
+      .populate('assignedWorker', 'name email title avatar skills')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit, 10));
@@ -48,7 +72,13 @@ const getCandidates = async (req, res, next) => {
  */
 const getCandidateById = async (req, res, next) => {
   try {
-    const candidate = await Candidate.findById(req.params.id).populate('createdBy', 'name email role');
+    const candidate = await Candidate.findById(req.params.id)
+      .populate('createdBy', 'name email role')
+      .populate('client', 'name email companyName phone')
+      .populate('project', 'name status stage client')
+      .populate('requirement', 'title description priority status')
+      .populate('assignedWorker', 'name email title avatar skills');
+
     if (!candidate) {
       return res.status(404).json({ success: false, message: 'Candidate not found.' });
     }
@@ -81,7 +111,16 @@ const createCandidate = async (req, res, next) => {
       compensation,
       compensationFrequency,
       probationPeriod,
-      notes
+      notes,
+      source,
+      client,
+      clientId,
+      project,
+      projectId,
+      requirement,
+      requirementId,
+      assignedWorker,
+      workerId
     } = req.body;
 
     if (!name || !email || !phone || !designation) {
@@ -115,6 +154,15 @@ const createCandidate = async (req, res, next) => {
       compensationFrequency: compensationFrequency || 'STIPEND_MONTHLY',
       probationPeriod: probationPeriod || '3 Months',
       notes: notes || '',
+      source: source || (projectId || project ? 'Client Project' : 'Direct HR'),
+      client: client || clientId || null,
+      clientId: clientId || client || null,
+      project: project || projectId || null,
+      projectId: projectId || project || null,
+      requirement: requirement || requirementId || null,
+      requirementId: requirementId || requirement || null,
+      assignedWorker: assignedWorker || workerId || null,
+      workerId: workerId || assignedWorker || null,
       createdBy: req.user._id
     });
 
@@ -125,10 +173,42 @@ const createCandidate = async (req, res, next) => {
       metadata: { candidateName: candidate.name, email: candidate.email, designation: candidate.designation }
     });
 
+    if (candidate.projectId || candidate.project) {
+      await recordHRAudit({
+        actorId: req.user._id,
+        action: 'CANDIDATE_LINKED_TO_PROJECT',
+        candidateId: candidate._id,
+        metadata: {
+          candidateName: candidate.name,
+          projectId: candidate.projectId || candidate.project,
+          clientId: candidate.clientId || candidate.client
+        }
+      });
+    }
+
+    if (candidate.requirementId || candidate.requirement) {
+      await recordHRAudit({
+        actorId: req.user._id,
+        action: 'CANDIDATE_LINKED_TO_REQUIREMENT',
+        candidateId: candidate._id,
+        metadata: {
+          candidateName: candidate.name,
+          requirementId: candidate.requirementId || candidate.requirement
+        }
+      });
+    }
+
+    const populated = await Candidate.findById(candidate._id)
+      .populate('createdBy', 'name email role')
+      .populate('client', 'name email companyName phone')
+      .populate('project', 'name status stage client')
+      .populate('requirement', 'title description priority status')
+      .populate('assignedWorker', 'name email title avatar skills');
+
     res.status(201).json({
       success: true,
       message: 'Candidate created successfully.',
-      candidate
+      candidate: populated
     });
   } catch (error) {
     next(error);
@@ -156,10 +236,18 @@ const updateCandidate = async (req, res, next) => {
       }
     }
 
+    const prevProject = candidate.projectId || candidate.project;
+    const prevReq = candidate.requirementId || candidate.requirement;
+
     const updated = await Candidate.findByIdAndUpdate(req.params.id, req.body, {
       new: true,
       runValidators: true
-    });
+    })
+      .populate('createdBy', 'name email role')
+      .populate('client', 'name email companyName phone')
+      .populate('project', 'name status stage client')
+      .populate('requirement', 'title description priority status')
+      .populate('assignedWorker', 'name email title avatar skills');
 
     await recordHRAudit({
       actorId: req.user._id,
@@ -168,10 +256,128 @@ const updateCandidate = async (req, res, next) => {
       metadata: { changes: Object.keys(req.body) }
     });
 
+    const newProject = updated.projectId || updated.project;
+    if (newProject && String(newProject) !== String(prevProject)) {
+      await recordHRAudit({
+        actorId: req.user._id,
+        action: 'CANDIDATE_LINKED_TO_PROJECT',
+        candidateId: updated._id,
+        metadata: {
+          candidateName: updated.name,
+          projectId: newProject
+        }
+      });
+    }
+
+    const newReq = updated.requirementId || updated.requirement;
+    if (newReq && String(newReq) !== String(prevReq)) {
+      await recordHRAudit({
+        actorId: req.user._id,
+        action: 'CANDIDATE_LINKED_TO_REQUIREMENT',
+        candidateId: updated._id,
+        metadata: {
+          candidateName: updated.name,
+          requirementId: newReq
+        }
+      });
+    }
+
     res.status(200).json({
       success: true,
       message: 'Candidate updated successfully.',
       candidate: updated
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Link candidate to ClientFlow project context (ADMIN / HR)
+ */
+const linkCandidateToProject = async (req, res, next) => {
+  try {
+    const { projectId, clientId, requirementId, workerId, assignedWorkerId, designation, role } = req.body;
+
+    const candidate = await Candidate.findById(req.params.id);
+    if (!candidate) {
+      return res.status(404).json({ success: false, message: 'Candidate not found.' });
+    }
+
+    if (projectId) {
+      candidate.projectId = projectId;
+      candidate.project = projectId;
+      candidate.source = 'Client Project';
+    }
+
+    if (clientId) {
+      candidate.clientId = clientId;
+      candidate.client = clientId;
+    }
+
+    if (requirementId) {
+      candidate.requirementId = requirementId;
+      candidate.requirement = requirementId;
+    }
+
+    const targetWorker = assignedWorkerId || workerId;
+    if (targetWorker) {
+      candidate.workerId = targetWorker;
+      candidate.assignedWorker = targetWorker;
+    }
+
+    if (designation || role) {
+      candidate.designation = designation || role;
+    }
+
+    await candidate.save();
+
+    // If linking a worker to the project, ensure worker is assigned to project as well
+    if (projectId && targetWorker) {
+      await Project.findByIdAndUpdate(projectId, {
+        $addToSet: { assignedWorkers: targetWorker }
+      });
+    }
+
+    // Record cross-module audit logs
+    if (projectId) {
+      await recordHRAudit({
+        actorId: req.user._id,
+        action: 'CANDIDATE_LINKED_TO_PROJECT',
+        candidateId: candidate._id,
+        metadata: {
+          candidateName: candidate.name,
+          projectId,
+          clientId: candidate.clientId || clientId,
+          role: candidate.designation
+        }
+      });
+    }
+
+    if (requirementId) {
+      await recordHRAudit({
+        actorId: req.user._id,
+        action: 'CANDIDATE_LINKED_TO_REQUIREMENT',
+        candidateId: candidate._id,
+        metadata: {
+          candidateName: candidate.name,
+          requirementId,
+          projectId
+        }
+      });
+    }
+
+    const populated = await Candidate.findById(candidate._id)
+      .populate('createdBy', 'name email role')
+      .populate('client', 'name email companyName phone')
+      .populate('project', 'name status stage client')
+      .populate('requirement', 'title description priority status')
+      .populate('assignedWorker', 'name email title avatar skills');
+
+    res.status(200).json({
+      success: true,
+      message: 'Candidate linked to project successfully.',
+      candidate: populated
     });
   } catch (error) {
     next(error);
@@ -211,5 +417,6 @@ module.exports = {
   getCandidateById,
   createCandidate,
   updateCandidate,
+  linkCandidateToProject,
   deleteCandidate
 };

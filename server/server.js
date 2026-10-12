@@ -112,6 +112,7 @@ const server = app.listen(PORT, () => {
   console.log(`🚀 ClientFlow API running on port ${PORT}`);
   console.log(`📡 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`📁 Local file uploads available at /uploads`);
+  console.log(`✨ GENFREX OfferFlow Integration Active`);
   console.log(`=========================================`);
 });
 

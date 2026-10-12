@@ -1,13 +1,31 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { userService } from '../../services/userService';
 import Card from '../../components/common/Card';
 import Input from '../../components/common/Input';
 import Button from '../../components/common/Button';
-import { ShieldCheck, Server, Database, Cloud, User, Building, Mail, CheckCircle2 } from 'lucide-react';
+import {
+  ShieldCheck,
+  Server,
+  Database,
+  Cloud,
+  User,
+  Building,
+  Mail,
+  CheckCircle2,
+  Lock,
+  KeyRound,
+  Eye,
+  EyeOff,
+  AlertTriangle
+} from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const AdminSettings = () => {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+
   const [formData, setFormData] = useState({
     name: user?.name || '',
     companyName: user?.companyName || '',
@@ -15,24 +33,72 @@ const AdminSettings = () => {
     phone: user?.phone || ''
   });
 
+  // Admin password change form
+  const [passwordData, setPasswordData] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: ''
+  });
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [passwordLoading, setPasswordLoading] = useState(false);
+
   const handleSave = (e) => {
     e.preventDefault();
     toast.success('Agency settings updated successfully.');
   };
 
+  const handleAdminPasswordChange = async (e) => {
+    e.preventDefault();
+
+    if (!passwordData.currentPassword) {
+      toast.error('Please enter your current master password.');
+      return;
+    }
+
+    if (!passwordData.newPassword || passwordData.newPassword.length < 6) {
+      toast.error('New password must be at least 6 characters long.');
+      return;
+    }
+
+    if (passwordData.newPassword !== passwordData.confirmPassword) {
+      toast.error('New passwords do not match. Please verify.');
+      return;
+    }
+
+    try {
+      setPasswordLoading(true);
+      const res = await userService.changeAdminPassword(passwordData);
+      if (res.success) {
+        toast.success('Admin password updated successfully. Please log in again.');
+        setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+        // Invalidate current session and require re-login
+        setTimeout(() => {
+          logout();
+          navigate('/login');
+        }, 1500);
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to update administrator password.');
+    } finally {
+      setPasswordLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-6 max-w-4xl">
       <div>
-        <h1 className="text-xl font-bold text-slate-900 tracking-tight">Settings & Workspace</h1>
+        <h1 className="text-xl font-bold text-slate-900 tracking-tight">Settings & Security</h1>
         <p className="text-xs text-slate-500 mt-0.5">
-          Configure agency branding, view environment connection status, and manage profile info.
+          Configure agency branding, manage master administrator credentials, and view system status.
         </p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Profile Card */}
-        <div className="md:col-span-2">
-          <Card title="Agency Profile" subtitle="Your corporate identity shown to clients">
+        {/* Left Column: Profile & Security */}
+        <div className="md:col-span-2 space-y-6">
+          {/* Agency Profile */}
+          <Card title="Agency Profile" subtitle="Your corporate identity shown across dashboards">
             <form onSubmit={handleSave} className="space-y-4">
               <Input
                 label="Full Name"
@@ -58,12 +124,102 @@ const AdminSettings = () => {
                 icon={Mail}
                 value={formData.email}
                 disabled={true}
-                helperText="Email is bound to your authentication identity."
+                helperText="Email is bound to your primary authentication identity."
               />
 
               <div className="pt-2">
                 <Button type="submit" size="sm">
                   Save Changes
+                </Button>
+              </div>
+            </form>
+          </Card>
+
+          {/* Change Admin Password Card */}
+          <Card
+            title="Change Admin Password"
+            subtitle="Update the master authentication password for the Platform Administrator"
+          >
+            <form onSubmit={handleAdminPasswordChange} className="space-y-4 text-xs">
+              <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <span className="text-[11px] leading-relaxed">
+                  Changing your administrator password will invalidate active sessions. You will be redirected to log in with your new password.
+                </span>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-800 mb-1">
+                  Current Password <span className="text-rose-500">*</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type={showCurrentPassword ? 'text' : 'password'}
+                    required
+                    placeholder="Enter current master password"
+                    value={passwordData.currentPassword}
+                    onChange={(e) =>
+                      setPasswordData({ ...passwordData, currentPassword: e.target.value })
+                    }
+                    className="w-full rounded-lg border border-slate-200 p-2 pr-8 text-xs text-slate-800 focus:border-blue-500 focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                    className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600"
+                  >
+                    {showCurrentPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-800 mb-1">
+                    New Password <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showNewPassword ? 'text' : 'password'}
+                      required
+                      placeholder="Min 6 characters"
+                      value={passwordData.newPassword}
+                      onChange={(e) =>
+                        setPasswordData({ ...passwordData, newPassword: e.target.value })
+                      }
+                      className="w-full rounded-lg border border-slate-200 p-2 pr-8 text-xs text-slate-800 focus:border-blue-500 focus:outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPassword(!showNewPassword)}
+                      className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600"
+                    >
+                      {showNewPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-800 mb-1">
+                    Confirm New Password <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type={showNewPassword ? 'text' : 'password'}
+                    required
+                    placeholder="Re-enter new password"
+                    value={passwordData.confirmPassword}
+                    onChange={(e) =>
+                      setPasswordData({ ...passwordData, confirmPassword: e.target.value })
+                    }
+                    className="w-full rounded-lg border border-slate-200 p-2 text-xs text-slate-800 focus:border-blue-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-2">
+                <Button type="submit" size="sm" loading={passwordLoading}>
+                  <KeyRound className="w-3.5 h-3.5 mr-1" />
+                  <span>Update Admin Password</span>
                 </Button>
               </div>
             </form>
@@ -107,10 +263,10 @@ const AdminSettings = () => {
               <div className="flex items-center justify-between p-2.5 rounded-lg bg-slate-50 border border-slate-100">
                 <div className="flex items-center gap-2">
                   <ShieldCheck className="w-4 h-4 text-purple-600" />
-                  <span className="font-medium text-slate-800">JWT Role Guard</span>
+                  <span className="font-medium text-slate-800">Security Mode</span>
                 </div>
                 <span className="text-[10px] font-bold text-purple-700 bg-purple-100 px-2 py-0.5 rounded-full">
-                  ADMIN
+                  RBAC Strict
                 </span>
               </div>
             </div>

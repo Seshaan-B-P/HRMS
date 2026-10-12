@@ -2,10 +2,10 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import NotificationDropdown from '../notifications/NotificationDropdown';
-import { Menu, Search, User, LogOut, ChevronDown, ShieldCheck, Briefcase } from 'lucide-react';
+import { Menu, Search, User, LogOut, ChevronDown, ShieldCheck, Briefcase, UserCheck } from 'lucide-react';
 
 const Navbar = ({ onMobileMenuToggle }) => {
-  const { user, logout, isAdmin, isWorker, isClient } = useAuth();
+  const { user, logout, isAdmin, isHR, isWorker, isClient } = useAuth();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const navigate = useNavigate();
 
@@ -17,6 +17,7 @@ const Navbar = ({ onMobileMenuToggle }) => {
 
   const getProfileRoute = () => {
     if (isAdmin) return '/admin/settings';
+    if (isHR) return '/hr/settings';
     if (isWorker) return '/worker/profile';
     return '/client/profile';
   };
@@ -73,6 +74,10 @@ const Navbar = ({ onMobileMenuToggle }) => {
                 {isAdmin ? (
                   <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">
                     <ShieldCheck className="w-2.5 h-2.5" /> Agency Admin
+                  </span>
+                ) : isHR ? (
+                  <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-cyan-700 bg-cyan-50 px-1.5 py-0.5 rounded border border-cyan-200">
+                    <UserCheck className="w-2.5 h-2.5" /> HR Talent Lead
                   </span>
                 ) : isWorker ? (
                   <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">

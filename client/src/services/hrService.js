@@ -27,6 +27,11 @@ export const hrService = {
     return res.data;
   },
 
+  linkCandidateToProject: async (id, data) => {
+    const res = await api.post(`/hr/candidates/${id}/link-project`, data);
+    return res.data;
+  },
+
   // Appointments
   getAppointments: async (params = {}) => {
     const res = await api.get('/hr/appointments', { params });
@@ -110,8 +115,30 @@ export const hrService = {
     return res.data;
   },
 
+  // Master Role Letter Templates
+  getLetterTemplates: async () => {
+    const res = await api.get('/hr/templates');
+    return res.data;
+  },
+
+  createLetterTemplate: async (data) => {
+    const res = await api.post('/hr/templates', data);
+    return res.data;
+  },
+
+  updateLetterTemplate: async (id, data) => {
+    const res = await api.put(`/hr/templates/${id}`, data);
+    return res.data;
+  },
+
+  deleteLetterTemplate: async (id) => {
+    const res = await api.delete(`/hr/templates/${id}`);
+    return res.data;
+  },
+
   updateTemplate: async (data) => {
     const res = await api.put('/hr/template', data);
     return res.data;
   }
 };
+

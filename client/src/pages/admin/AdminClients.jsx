@@ -142,8 +142,8 @@ const AdminClients = () => {
         <div className="bg-white rounded-xl border border-slate-200 p-8">
           <EmptyState
             icon={Users}
-            title="No clients found"
-            description="Add your first client to start collaborating on projects."
+            title="No clients created yet."
+            description="Add your first client to start collaborating on projects, sharing milestones, and receiving task requests."
             actionLabel="Add Client"
             onAction={() => setModalOpen(true)}
           />

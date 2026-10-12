@@ -25,7 +25,9 @@ import {
   XCircle,
   FileCheck,
   ChevronDown,
-  ChevronRight
+  ChevronRight,
+  UserCheck,
+  HardDrive
 } from 'lucide-react';
 
 const Sidebar = ({ isOpen, onClose }) => {
@@ -57,8 +59,10 @@ const Sidebar = ({ isOpen, onClose }) => {
     {
       group: 'PEOPLE',
       items: [
+        { label: 'User Management', path: '/admin/users', icon: Users },
         { label: 'Workers', path: '/admin/workers', icon: HardHat },
-        { label: 'Clients', path: '/admin/clients', icon: Users }
+        { label: 'Clients', path: '/admin/clients', icon: Users },
+        { label: 'HR Team', path: '/admin/hr-team', icon: UserCheck }
       ]
     },
     {
@@ -77,6 +81,7 @@ const Sidebar = ({ isOpen, onClose }) => {
     {
       group: 'SYSTEM',
       items: [
+        { label: 'Storage & Cloud', path: '/admin/storage', icon: HardDrive },
         { label: 'Reports & Analytics', path: '/admin/reports', icon: BarChart3 },
         { label: 'Audit Logs', path: '/admin/activities', icon: History },
         { label: 'Notifications', path: '/admin/notifications', icon: Bell },

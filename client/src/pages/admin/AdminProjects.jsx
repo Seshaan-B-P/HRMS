@@ -118,8 +118,8 @@ const AdminProjects = () => {
         <div className="bg-white rounded-xl border border-slate-200 p-8">
           <EmptyState
             icon={FolderKanban}
-            title="No projects match your filter"
-            description="Try changing your search terms or create a new client project."
+            title={projects.length === 0 ? "No projects yet." : "No projects match your filter"}
+            description={projects.length === 0 ? "Add your first client project to manage milestones, sprint tasks, and talent assignments." : "Try changing your search terms or create a new client project."}
             actionLabel="Create Project"
             onAction={() => setModalOpen(true)}
           />

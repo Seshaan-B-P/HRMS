@@ -10,6 +10,7 @@ import AppLayout from './layouts/AppLayout';
 import LandingPage from './pages/LandingPage';
 import Login from './pages/auth/Login';
 import Register from './pages/auth/Register';
+import AdminSetup from './pages/auth/AdminSetup';
 
 // Admin Pages
 import AdminDashboard from './pages/admin/AdminDashboard';
@@ -18,12 +19,15 @@ import AdminProjectDetails from './pages/admin/AdminProjectDetails';
 import AdminTaskRequests from './pages/admin/AdminTaskRequests';
 import AdminWorkers from './pages/admin/AdminWorkers';
 import AdminClients from './pages/admin/AdminClients';
+import AdminHRTeam from './pages/admin/AdminHRTeam';
+import AdminUsers from './pages/admin/AdminUsers';
 import AdminTasks from './pages/admin/AdminTasks';
 import AdminFiles from './pages/admin/AdminFiles';
 import AdminReports from './pages/admin/AdminReports';
 import AdminActivities from './pages/admin/AdminActivities';
 import AdminNotifications from './pages/admin/AdminNotifications';
 import AdminSettings from './pages/admin/AdminSettings';
+import AdminStorage from './pages/admin/AdminStorage';
 import AdminPendingApprovals from './pages/admin/AdminPendingApprovals';
 import AdminHRReports from './pages/admin/AdminHRReports';
 
@@ -92,7 +96,8 @@ function App() {
           <Route path="/" element={<Navigate to="/login" replace />} />
           <Route path="/landing" element={<LandingPage />} />
           <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
+          <Route path="/register" element={<Navigate to="/login" replace />} />
+          <Route path="/setup-admin" element={<Navigate to="/login" replace />} />
 
           {/* Admin Routes (Role: ADMIN) */}
           <Route
@@ -110,11 +115,14 @@ function App() {
             <Route path="task-requests" element={<AdminTaskRequests />} />
             <Route path="workers" element={<AdminWorkers />} />
             <Route path="clients" element={<AdminClients />} />
+            <Route path="hr-team" element={<AdminHRTeam />} />
+            <Route path="users" element={<AdminUsers />} />
             <Route path="tasks" element={<AdminTasks />} />
             <Route path="files" element={<AdminFiles />} />
             <Route path="reports" element={<AdminReports />} />
             <Route path="activities" element={<AdminActivities />} />
             <Route path="notifications" element={<AdminNotifications />} />
+            <Route path="storage" element={<AdminStorage />} />
             <Route path="settings" element={<AdminSettings />} />
 
             {/* Admin HR Routes */}

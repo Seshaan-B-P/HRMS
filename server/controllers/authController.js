@@ -7,28 +7,60 @@ const generateToken = (user) => {
     {
       userId: user._id,
       role: user.role,
-      email: user.email
+      email: user.email,
+      tokenVersion: user.tokenVersion || 0
     },
     secret,
     { expiresIn: '7d' }
   );
 };
 
-// @desc    Register a new user (Admin)
-// @route   POST /api/auth/register
+// @desc    Check whether the platform requires initial Administrator setup
+// @route   GET /api/auth/setup-status
 // @access  Public
-const register = async (req, res, next) => {
+const getSetupStatus = async (req, res, next) => {
   try {
-    const { name, email, password, companyName, phone, role } = req.body;
+    const adminCount = await User.countDocuments({ role: 'ADMIN' });
+    res.status(200).json({
+      success: true,
+      needsSetup: adminCount === 0,
+      adminCount
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Perform First-Time Secure Administrator Setup
+// @route   POST /api/auth/setup-admin
+// @access  Public (Only when adminCount === 0)
+const setupFirstAdmin = async (req, res, next) => {
+  try {
+    const adminCount = await User.countDocuments({ role: 'ADMIN' });
+    if (adminCount > 0) {
+      return res.status(403).json({
+        success: false,
+        message: 'Administrator setup has already been completed. Public Admin registration is disabled.'
+      });
+    }
+
+    const { name, email, password, companyName, phone } = req.body;
 
     if (!name || !email || !password) {
       return res.status(400).json({
         success: false,
-        message: 'Please provide name, email, and password.'
+        message: 'Please provide administrator name, official email, and password.'
       });
     }
 
-    const existingUser = await User.findOne({ email: email.toLowerCase() });
+    if (password.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: 'Password must be at least 6 characters long.'
+      });
+    }
+
+    const existingUser = await User.findOne({ email: email.toLowerCase().trim() });
     if (existingUser) {
       return res.status(400).json({
         success: false,
@@ -36,33 +68,45 @@ const register = async (req, res, next) => {
       });
     }
 
-    const user = await User.create({
-      name,
-      email: email.toLowerCase(),
+    // Create the primary system Administrator (password hashed via User model pre-save hook)
+    const adminUser = await User.create({
+      name: name.trim(),
+      email: email.toLowerCase().trim(),
       password,
-      companyName: companyName || '',
-      phone: phone || '',
-      role: role === 'CLIENT' ? 'CLIENT' : 'ADMIN' // Default to ADMIN for open registration
+      companyName: companyName ? companyName.trim() : 'GENFREX',
+      phone: phone ? phone.trim() : '',
+      role: 'ADMIN',
+      title: 'Platform Administrator'
     });
 
-    const token = generateToken(user);
+    const token = generateToken(adminUser);
 
     res.status(201).json({
       success: true,
-      message: 'Account registered successfully.',
+      message: 'Primary Administrator account created successfully.',
       token,
       user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        companyName: user.companyName,
-        avatar: user.avatar
+        id: adminUser._id,
+        name: adminUser.name,
+        email: adminUser.email,
+        role: adminUser.role,
+        companyName: adminUser.companyName,
+        avatar: adminUser.avatar
       }
     });
   } catch (error) {
     next(error);
   }
+};
+
+// @desc    Register a new user (Strictly Disabled: Only ADMIN can create users)
+// @route   POST /api/auth/register
+// @access  Public (Disabled)
+const register = async (req, res, next) => {
+  return res.status(403).json({
+    success: false,
+    message: 'Public registration is disabled. All team and client accounts must be created by the Administrator.'
+  });
 };
 
 // @desc    Login user & get token
@@ -92,6 +136,14 @@ const login = async (req, res, next) => {
       return res.status(401).json({
         success: false,
         message: 'Invalid email or password.'
+      });
+    }
+
+    // Check account status
+    if (user.status === 'INACTIVE' || user.isActive === false) {
+      return res.status(403).json({
+        success: false,
+        message: 'Your account has been deactivated. Please contact the Administrator.'
       });
     }
 
@@ -131,8 +183,21 @@ const getMe = async (req, res, next) => {
   }
 };
 
+// @desc    Disallowed Forgot Password (Only Admin can manage passwords)
+// @route   POST /api/auth/forgot-password, POST /api/auth/reset-password
+// @access  Public (Forbidden)
+const forgotPassword = async (req, res) => {
+  return res.status(403).json({
+    success: false,
+    message: 'Self-serve password reset is disabled. Please contact the Platform Administrator to reset your password.'
+  });
+};
+
 module.exports = {
+  getSetupStatus,
+  setupFirstAdmin,
   register,
   login,
-  getMe
+  getMe,
+  forgotPassword
 };

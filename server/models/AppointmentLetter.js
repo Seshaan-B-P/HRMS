@@ -13,7 +13,15 @@ const appointmentLetterSchema = new mongoose.Schema(
       ref: 'Candidate',
       required: [true, 'Candidate reference is required']
     },
+    candidate: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Candidate'
+    },
     clientId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
+    },
+    client: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User'
     },
@@ -21,9 +29,29 @@ const appointmentLetterSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Project'
     },
+    project: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Project'
+    },
+    requirementId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'TaskRequest'
+    },
+    requirement: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'TaskRequest'
+    },
     workerId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User'
+    },
+    assignedWorker: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
+    },
+    employmentType: {
+      type: String,
+      default: 'Trainee'
     },
     appointmentType: {
       type: String,
@@ -198,7 +226,32 @@ const appointmentLetterSchema = new mongoose.Schema(
   }
 );
 
+// Pre-save hook to synchronize aliases
+appointmentLetterSchema.pre('save', function (next) {
+  if (this.client && !this.clientId) this.clientId = this.client;
+  if (this.clientId && !this.client) this.client = this.clientId;
+
+  if (this.project && !this.projectId) this.projectId = this.project;
+  if (this.projectId && !this.project) this.project = this.projectId;
+
+  if (this.candidate && !this.candidateId) this.candidateId = this.candidate;
+  if (this.candidateId && !this.candidate) this.candidate = this.candidateId;
+
+  if (this.requirement && !this.requirementId) this.requirementId = this.requirement;
+  if (this.requirementId && !this.requirement) this.requirement = this.requirementId;
+
+  if (this.assignedWorker && !this.workerId) this.workerId = this.assignedWorker;
+  if (this.workerId && !this.assignedWorker) this.assignedWorker = this.workerId;
+
+  next();
+});
+
 appointmentLetterSchema.index({ candidateId: 1 });
+appointmentLetterSchema.index({ candidate: 1 });
+appointmentLetterSchema.index({ projectId: 1 });
+appointmentLetterSchema.index({ project: 1 });
+appointmentLetterSchema.index({ clientId: 1 });
+appointmentLetterSchema.index({ client: 1 });
 appointmentLetterSchema.index({ status: 1 });
 appointmentLetterSchema.index({ createdBy: 1 });
 appointmentLetterSchema.index({ joiningDate: 1 });

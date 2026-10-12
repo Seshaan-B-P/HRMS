@@ -11,6 +11,7 @@ const {
 } = require('../services/hrService');
 const { generateAppointmentPDF } = require('../services/pdfService');
 const { sendAppointmentEmail } = require('../services/emailService');
+const { uploadFile } = require('../services/storageService');
 const path = require('path');
 const fs = require('fs');
 
@@ -25,6 +26,10 @@ const getAppointments = async (req, res, next) => {
       designation,
       employmentType,
       createdBy,
+      projectId,
+      clientId,
+      requirementId,
+      filterType,
       search,
       page = 1,
       limit = 20,
@@ -40,7 +45,29 @@ const getAppointments = async (req, res, next) => {
         query.status = status;
       }
     }
-    if (candidateId) query.candidateId = candidateId;
+    if (candidateId) {
+      query.$or = [{ candidateId }, { candidate: candidateId }];
+    }
+    if (projectId) {
+      query.$or = [{ projectId }, { project: projectId }];
+    }
+    if (clientId) {
+      query.$or = [{ clientId }, { client: clientId }];
+    }
+    if (requirementId) {
+      query.$or = [{ requirementId }, { requirement: requirementId }];
+    }
+
+    if (filterType === 'INTERNAL') {
+      query.projectId = { $exists: false };
+      query.project = { $exists: false };
+    } else if (filterType === 'PROJECT_LINKED') {
+      query.$or = [
+        { projectId: { $exists: true, $ne: null } },
+        { project: { $exists: true, $ne: null } }
+      ];
+    }
+
     if (designation) query.designation = { $regex: designation, $options: 'i' };
     if (employmentType) query.appointmentType = employmentType;
     if (createdBy) query.createdBy = createdBy;
@@ -58,18 +85,34 @@ const getAppointments = async (req, res, next) => {
       }).select('_id');
       const candIds = matchedCandidates.map((c) => c._id);
 
-      query.$or = [
+      const searchOr = [
         { referenceNumber: { $regex: search, $options: 'i' } },
         { designation: { $regex: search, $options: 'i' } },
         { department: { $regex: search, $options: 'i' } },
         { candidateId: { $in: candIds } }
       ];
+
+      if (query.$or) {
+        query.$and = [{ $or: query.$or }, { $or: searchOr }];
+        delete query.$or;
+      } else {
+        query.$or = searchOr;
+      }
     }
 
     const skip = (parseInt(page, 10) - 1) * parseInt(limit, 10);
     const total = await AppointmentLetter.countDocuments(query);
     const appointments = await AppointmentLetter.find(query)
-      .populate('candidateId', 'name email phone address designation department employmentType joiningDate')
+      .populate('candidateId', 'name email phone address designation department employmentType joiningDate source')
+      .populate('candidate', 'name email phone address designation department employmentType joiningDate source')
+      .populate('clientId', 'name email companyName phone')
+      .populate('client', 'name email companyName phone')
+      .populate('projectId', 'name status stage client')
+      .populate('project', 'name status stage client')
+      .populate('requirementId', 'title description priority status')
+      .populate('requirement', 'title description priority status')
+      .populate('workerId', 'name email avatar title skills')
+      .populate('assignedWorker', 'name email avatar title skills')
       .populate('createdBy', 'name email role')
       .populate('approvedBy', 'name email role')
       .populate('sentBy', 'name email role')
@@ -97,6 +140,15 @@ const getAppointmentById = async (req, res, next) => {
   try {
     const appointment = await AppointmentLetter.findById(req.params.id)
       .populate('candidateId')
+      .populate('candidate')
+      .populate('clientId', 'name email companyName phone')
+      .populate('client', 'name email companyName phone')
+      .populate('projectId', 'name status stage client')
+      .populate('project', 'name status stage client')
+      .populate('requirementId', 'title description priority status')
+      .populate('requirement', 'title description priority status')
+      .populate('workerId', 'name email avatar title skills')
+      .populate('assignedWorker', 'name email avatar title skills')
       .populate('createdBy', 'name email role')
       .populate('approvedBy', 'name email role')
       .populate('sentBy', 'name email role')
@@ -131,6 +183,7 @@ const createAppointment = async (req, res, next) => {
       candidateId,
       newCandidate,
       appointmentType,
+      employmentType,
       title,
       designation,
       department,
@@ -145,6 +198,14 @@ const createAppointment = async (req, res, next) => {
       confidentialityTerms,
       professionalConductTerms,
       acceptanceDeadline,
+      client,
+      clientId,
+      project,
+      projectId,
+      requirement,
+      requirementId,
+      assignedWorker,
+      workerId,
       submitNow
     } = req.body;
 
@@ -158,6 +219,11 @@ const createAppointment = async (req, res, next) => {
       } else {
         const createdCand = await Candidate.create({
           ...newCandidate,
+          client: client || clientId || null,
+          project: project || projectId || null,
+          requirement: requirement || requirementId || null,
+          assignedWorker: assignedWorker || workerId || null,
+          source: project || projectId ? 'Client Project' : 'Direct HR',
           createdBy: req.user._id
         });
         targetCandidateId = createdCand._id;
@@ -191,7 +257,17 @@ const createAppointment = async (req, res, next) => {
     const appointment = await AppointmentLetter.create({
       referenceNumber,
       candidateId: targetCandidateId,
-      appointmentType: appointmentType || 'TRAINEE',
+      candidate: targetCandidateId,
+      clientId: clientId || client || candidate.clientId || candidate.client || null,
+      client: client || clientId || candidate.client || candidate.clientId || null,
+      projectId: projectId || project || candidate.projectId || candidate.project || null,
+      project: project || projectId || candidate.project || candidate.projectId || null,
+      requirementId: requirementId || requirement || candidate.requirementId || candidate.requirement || null,
+      requirement: requirement || requirementId || candidate.requirement || candidate.requirementId || null,
+      workerId: workerId || assignedWorker || candidate.workerId || candidate.assignedWorker || null,
+      assignedWorker: assignedWorker || workerId || candidate.assignedWorker || candidate.workerId || null,
+      employmentType: employmentType || appointmentType || 'Trainee',
+      appointmentType: appointmentType || (employmentType === 'Full-time' ? 'FULL_TIME' : employmentType === 'Internship' ? 'INTERNSHIP' : 'TRAINEE'),
       title: title || activeTemplate.title || 'TRAINEE APPOINTMENT LETTER',
       designation,
       department: department || candidate.department || 'Engineering',
@@ -221,7 +297,7 @@ const createAppointment = async (req, res, next) => {
       submittedAt: submitNow ? new Date() : null
     });
 
-    // Record audit log
+    // Record audit logs
     await recordHRAudit({
       actorId: req.user._id,
       action: submitNow ? 'APPOINTMENT_SUBMITTED' : 'APPOINTMENT_DRAFT_CREATED',
@@ -230,6 +306,22 @@ const createAppointment = async (req, res, next) => {
       newStatus: initialStatus,
       metadata: { referenceNumber, designation, compensation }
     });
+
+    // Cross-module audit: appointment created from project
+    if (appointment.projectId || appointment.project) {
+      await recordHRAudit({
+        actorId: req.user._id,
+        action: 'APPOINTMENT_CREATED_FROM_PROJECT',
+        appointmentLetterId: appointment._id,
+        candidateId: candidate._id,
+        metadata: {
+          referenceNumber,
+          projectId: appointment.projectId || appointment.project,
+          clientId: appointment.clientId || appointment.client,
+          requirementId: appointment.requirementId || appointment.requirement
+        }
+      });
+    }
 
     if (submitNow) {
       await HRApproval.create({
@@ -248,6 +340,15 @@ const createAppointment = async (req, res, next) => {
 
     const populated = await AppointmentLetter.findById(appointment._id)
       .populate('candidateId')
+      .populate('candidate')
+      .populate('clientId', 'name email companyName phone')
+      .populate('client', 'name email companyName phone')
+      .populate('projectId', 'name status stage client')
+      .populate('project', 'name status stage client')
+      .populate('requirementId', 'title description priority status')
+      .populate('requirement', 'title description priority status')
+      .populate('workerId', 'name email avatar title skills')
+      .populate('assignedWorker', 'name email avatar title skills')
       .populate('createdBy', 'name email role');
 
     res.status(201).json({
@@ -293,6 +394,7 @@ const updateAppointment = async (req, res, next) => {
       'designation',
       'department',
       'appointmentType',
+      'employmentType',
       'title',
       'appointmentDate',
       'joiningDate',
@@ -304,7 +406,15 @@ const updateAppointment = async (req, res, next) => {
       'terms',
       'confidentialityTerms',
       'professionalConductTerms',
-      'acceptanceDeadline'
+      'acceptanceDeadline',
+      'clientId',
+      'client',
+      'projectId',
+      'project',
+      'requirementId',
+      'requirement',
+      'workerId',
+      'assignedWorker'
     ];
 
     allowedFields.forEach((field) => {
@@ -347,6 +457,15 @@ const updateAppointment = async (req, res, next) => {
 
     const populated = await AppointmentLetter.findById(appointment._id)
       .populate('candidateId')
+      .populate('candidate')
+      .populate('clientId', 'name email companyName phone')
+      .populate('client', 'name email companyName phone')
+      .populate('projectId', 'name status stage client')
+      .populate('project', 'name status stage client')
+      .populate('requirementId', 'title description priority status')
+      .populate('requirement', 'title description priority status')
+      .populate('workerId', 'name email avatar title skills')
+      .populate('assignedWorker', 'name email avatar title skills')
       .populate('createdBy', 'name email role')
       .populate('approvedBy', 'name email role');
 
@@ -573,20 +692,59 @@ const generatePDF = async (req, res, next) => {
       appointment.letterContentSnapshot || appointment.templateId
     );
 
-    // Save File record
+    // Save File record with Google Drive cloud storage (or graceful fallback)
     const stats = fs.statSync(filePath);
+    const stored = await uploadFile(
+      {
+        path: filePath,
+        filename: fileName,
+        originalname: fileName,
+        mimetype: 'application/pdf',
+        size: stats.size
+      },
+      {
+        category: 'HR_APPOINTMENT',
+        module: 'HR',
+        isConfidential: true,
+        candidateName: candidate.name,
+        candidateId: candidate._id,
+        fileName
+      }
+    );
+
     const fileRecord = await File.create({
       uploadedBy: req.user._id,
+      uploadedByRole: req.user.role || 'HR',
       fileName,
-      fileUrl,
+      originalFileName: fileName,
+      fileUrl: stored.fileUrl || `/api/files/download`,
+      storageProvider: stored.storageProvider || 'GOOGLE_DRIVE',
+      storageKey: stored.storageKey || '',
+      publicId: stored.publicId || '',
+      driveFileId: stored.driveFileId || '',
+      driveFolderId: stored.driveFolderId || '',
       fileType: 'application/pdf',
+      mimeType: 'application/pdf',
       fileSize: stats.size,
-      category: 'OTHER',
-      isDeliverable: false
+      module: 'HR',
+      relatedModule: 'HR',
+      relatedEntityId: appointment._id,
+      category: 'HR_APPOINTMENT',
+      isDeliverable: false,
+      isConfidential: true,
+      candidate: candidate._id,
+      appointmentLetter: appointment._id,
+      project: appointment.projectId || null,
+      client: appointment.clientId || null,
+      status: 'ACTIVE',
+      approvalStatus: 'APPROVED'
     });
 
+    fileRecord.fileUrl = `/api/files/${fileRecord._id}/download`;
+    await fileRecord.save();
+
     appointment.pdfFileId = fileRecord._id;
-    appointment.pdfUrl = fileUrl;
+    appointment.pdfUrl = fileRecord.fileUrl;
     appointment.pdfGeneratedAt = new Date();
     await appointment.save();
 
@@ -655,29 +813,17 @@ const sendAppointment = async (req, res, next) => {
       });
     }
 
-    // Ensure PDF is generated
-    let pdfPath = null;
-    let pdfFileName = `GENFREX_Appointment_${appointment.referenceNumber.replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf`;
-
-    if (appointment.pdfUrl && appointment.pdfUrl.startsWith('/uploads/')) {
-      const existingPath = path.join(__dirname, '..', appointment.pdfUrl);
-      if (fs.existsSync(existingPath)) {
-        pdfPath = existingPath;
-        pdfFileName = path.basename(existingPath);
-      }
-    }
-
-    if (!pdfPath) {
-      const generated = await generateAppointmentPDF(
-        appointment,
-        candidate,
-        appointment.letterContentSnapshot || appointment.templateId
-      );
-      pdfPath = generated.filePath;
-      pdfFileName = generated.fileName;
-      appointment.pdfUrl = generated.fileUrl;
-      appointment.pdfGeneratedAt = new Date();
-    }
+    // Generate fresh executive corporate PDF
+    const generated = await generateAppointmentPDF(
+      appointment,
+      candidate,
+      appointment.letterContentSnapshot || appointment.templateId
+    );
+    const pdfPath = generated.filePath;
+    const pdfFileName = generated.fileName;
+    appointment.pdfUrl = generated.fileUrl;
+    appointment.pdfGeneratedAt = new Date();
+    await appointment.save();
 
     // Dispatch email
     const emailResult = await sendAppointmentEmail({
@@ -733,7 +879,9 @@ const sendAppointment = async (req, res, next) => {
 
     res.status(200).json({
       success: true,
-      message: `Appointment letter sent successfully to ${candidate.email}.`,
+      message: emailResult.simulated
+        ? `Status updated to SENT (Development mode: Real email was NOT sent because SMTP credentials are not configured in server/.env).`
+        : `Appointment letter sent successfully to ${candidate.email}.`,
       appointment,
       emailResult
     });
@@ -807,6 +955,16 @@ const updateAcceptanceStatus = async (req, res, next) => {
       newStatus: status,
       metadata: { reason }
     });
+
+    if (status === 'ACCEPTED') {
+      await recordHRAudit({
+        actorId: req.user._id,
+        action: 'CANDIDATE_ACCEPTED',
+        appointmentLetterId: appointment._id,
+        candidateId: appointment.candidateId._id,
+        metadata: { referenceNumber: appointment.referenceNumber }
+      });
+    }
 
     res.status(200).json({
       success: true,

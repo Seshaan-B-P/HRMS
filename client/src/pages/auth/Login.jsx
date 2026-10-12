@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { authService } from '../../services/authService';
 import {
   Mail,
   Lock,
@@ -145,8 +146,6 @@ const Login = () => {
   const [rememberMe, setRememberMe] = useState(true);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
-  const [selectedRole, setSelectedRole] = useState(null);
-
   const { login, user, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -187,21 +186,14 @@ const Login = () => {
     }
   };
 
-  const fillCredentials = (type) => {
+  const handleQuickSelect = (role) => {
     setErrorMsg('');
-    setSelectedRole(type);
-    if (type === 'ADMIN') {
-      setEmail('admin@clientportal.com');
+    if (role === 'ADMIN') {
+      setEmail('admin@genfrex.com');
       setPassword('Admin@123');
-    } else if (type === 'HR') {
+    } else if (role === 'HR') {
       setEmail('hr@genfrex.com');
       setPassword('Hr@123');
-    } else if (type === 'WORKER') {
-      setEmail('arun@clientportal.com');
-      setPassword('Worker@123');
-    } else {
-      setEmail('client@clientportal.com');
-      setPassword('Client@123');
     }
   };
 
@@ -356,91 +348,54 @@ const Login = () => {
             <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-600 via-cyan-400 to-indigo-600" />
 
             {/* Form Header */}
-            <div className="mb-3 text-center">
+            <div className="mb-4 text-center">
               <h3 className="text-lg sm:text-xl font-black text-white tracking-tight">
                 Authorized Sign-In
               </h3>
               <p className="mt-0.5 text-[11px] text-slate-400">
-                Choose a quick test role or enter verified credentials
+                Enter your verified credentials to access your GENFREX workspace
               </p>
             </div>
 
-            {/* Quick Demo Credentials Box */}
-            <div className="mb-3.5 p-2.5 rounded-xl bg-slate-950/70 border border-white/10 shadow-inner">
-              <div className="flex items-center justify-between text-[9px] font-bold text-slate-300 uppercase tracking-wider mb-2 px-0.5">
-                <div className="flex items-center gap-1.5">
-                  <Sparkles className="w-3 h-3 text-cyan-400 animate-spin" style={{ animationDuration: '6s' }} />
-                  <span>One-Click Role Access</span>
-                </div>
-                {selectedRole && (
-                  <span className="text-[9px] text-cyan-400 font-medium normal-case flex items-center gap-1">
-                    <CheckCircle2 className="w-3 h-3 text-cyan-400" />
-                    <span>{selectedRole} Loaded</span>
-                  </span>
-                )}
+            {/* Quick Demo Credentials Switcher */}
+            <div className="mb-3.5 p-2 rounded-xl bg-slate-900/90 border border-white/10 shadow-inner">
+              <div className="flex items-center justify-between mb-1.5 px-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                  <Sparkles className="w-3 h-3 text-cyan-400" />
+                  Quick Role Login
+                </span>
+                <span className="text-[9px] text-slate-500">1-Click Auto Fill</span>
               </div>
-
-              <div className="grid grid-cols-4 gap-1.5">
+              <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
-                  onClick={() => fillCredentials('ADMIN')}
-                  className={`p-1.5 rounded-lg border text-[9px] font-semibold flex flex-col items-center justify-center gap-1 transition-all duration-200 ${
-                    selectedRole === 'ADMIN'
-                      ? 'border-blue-400 bg-blue-600/30 text-white shadow-md shadow-blue-500/30 scale-105'
-                      : 'border-blue-500/30 bg-blue-950/40 hover:bg-blue-900/60 hover:border-blue-400/60 text-blue-300'
+                  onClick={() => handleQuickSelect('ADMIN')}
+                  className={`py-1.5 px-2 rounded-lg border text-[11px] font-semibold flex items-center justify-center gap-1.5 transition-all ${
+                    email === 'admin@genfrex.com'
+                      ? 'border-blue-500 bg-blue-600/30 text-blue-200 shadow-sm shadow-blue-500/20'
+                      : 'border-white/10 bg-slate-800/60 hover:bg-slate-800 text-slate-300 hover:text-white'
                   }`}
-                  title="Agency Admin"
                 >
                   <ShieldCheck className="w-3.5 h-3.5 text-blue-400" />
                   <span>Admin</span>
                 </button>
-
                 <button
                   type="button"
-                  onClick={() => fillCredentials('HR')}
-                  className={`p-1.5 rounded-lg border text-[9px] font-semibold flex flex-col items-center justify-center gap-1 transition-all duration-200 ${
-                    selectedRole === 'HR'
-                      ? 'border-cyan-400 bg-cyan-600/30 text-white shadow-md shadow-cyan-500/30 scale-105'
-                      : 'border-cyan-500/30 bg-cyan-950/40 hover:bg-cyan-900/60 hover:border-cyan-400/60 text-cyan-300'
+                  onClick={() => handleQuickSelect('HR')}
+                  className={`py-1.5 px-2 rounded-lg border text-[11px] font-semibold flex items-center justify-center gap-1.5 transition-all ${
+                    email === 'hr@genfrex.com' || email === 'anisha@genfrex.com'
+                      ? 'border-cyan-500 bg-cyan-600/30 text-cyan-200 shadow-sm shadow-cyan-500/20'
+                      : 'border-white/10 bg-slate-800/60 hover:bg-slate-800 text-slate-300 hover:text-white'
                   }`}
-                  title="HR Talent Lead"
                 >
                   <UserCheck className="w-3.5 h-3.5 text-cyan-400" />
                   <span>HR Lead</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => fillCredentials('WORKER')}
-                  className={`p-1.5 rounded-lg border text-[9px] font-semibold flex flex-col items-center justify-center gap-1 transition-all duration-200 ${
-                    selectedRole === 'WORKER'
-                      ? 'border-amber-400 bg-amber-600/30 text-white shadow-md shadow-amber-500/30 scale-105'
-                      : 'border-amber-500/30 bg-amber-950/40 hover:bg-amber-900/60 hover:border-amber-400/60 text-amber-300'
-                  }`}
-                  title="Engineer / Worker"
-                >
-                  <HardHat className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Worker</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => fillCredentials('CLIENT')}
-                  className={`p-1.5 rounded-lg border text-[9px] font-semibold flex flex-col items-center justify-center gap-1 transition-all duration-200 ${
-                    selectedRole === 'CLIENT'
-                      ? 'border-emerald-400 bg-emerald-600/30 text-white shadow-md shadow-emerald-500/30 scale-105'
-                      : 'border-emerald-500/30 bg-emerald-950/40 hover:bg-emerald-900/60 hover:border-emerald-400/60 text-emerald-300'
-                  }`}
-                  title="Enterprise Client"
-                >
-                  <Briefcase className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Client</span>
                 </button>
               </div>
             </div>
 
             {errorMsg && (
-              <div className="mb-3 p-2 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2 animate-card-entrance">
+              <div className="mb-3 p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2 animate-card-entrance">
                 <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0 animate-ping" />
                 <span>{errorMsg}</span>
               </div>
@@ -493,7 +448,7 @@ const Login = () => {
                 </div>
               </div>
 
-              <div className="flex items-center justify-between text-[11px] pt-0.5">
+              <div className="flex items-center text-[11px] pt-0.5">
                 <label className="flex items-center gap-2 cursor-pointer text-slate-400 hover:text-slate-200 transition-colors">
                   <input
                     type="checkbox"
@@ -503,13 +458,6 @@ const Login = () => {
                   />
                   <span>Remember me</span>
                 </label>
-                <button
-                  type="button"
-                  onClick={() => alert('For password resets or enterprise security inquiries, please contact your GENFREX platform administrator at genfrexofficial@gmail.com.')}
-                  className="text-[11px] text-cyan-400 hover:text-cyan-300 transition-colors font-medium"
-                >
-                  Forgot password?
-                </button>
               </div>
 
               {/* High-tech Shimmering Submit Button */}
@@ -539,10 +487,7 @@ const Login = () => {
 
             <div className="mt-3.5 pt-2.5 border-t border-white/10 text-center">
               <p className="text-[10px] text-slate-400">
-                Need an enterprise account?{' '}
-                <Link to="/register" className="font-semibold text-cyan-400 hover:text-cyan-300 transition-colors">
-                  Register agency
-                </Link>
+                Platform accounts are provisioned and managed by your Administrator.
               </p>
             </div>
           </div>

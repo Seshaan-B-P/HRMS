@@ -1,110 +1,78 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';
-import Input from '../../components/common/Input';
+import { authService } from '../../services/authService';
 import Button from '../../components/common/Button';
-import { Layers, User, Mail, Lock, Building, ArrowRight } from 'lucide-react';
+import { ShieldAlert, ArrowRight, Lock } from 'lucide-react';
 
 const Register = () => {
-  const [formData, setFormData] = useState({
-    name: '',
-    companyName: '',
-    email: '',
-    password: '',
-    phone: ''
-  });
-  const [loading, setLoading] = useState(false);
-  const { register } = useAuth();
+  const [checking, setChecking] = useState(true);
+  const [needsSetup, setNeedsSetup] = useState(false);
   const navigate = useNavigate();
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
-  };
+  useEffect(() => {
+    const checkStatus = async () => {
+      try {
+        const res = await authService.getSetupStatus();
+        if (res.success && res.needsSetup) {
+          setNeedsSetup(true);
+          navigate('/setup-admin', { replace: true });
+        }
+      } catch (err) {
+        console.error('Failed to check setup status', err);
+      } finally {
+        setChecking(false);
+      }
+    };
+    checkStatus();
+  }, [navigate]);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    try {
-      setLoading(true);
-      await register({ ...formData, role: 'ADMIN' });
-      navigate('/admin/dashboard');
-    } catch (err) {
-      // Error handled in context toast
-    } finally {
-      setLoading(false);
-    }
-  };
+  if (checking) {
+    return (
+      <div className="min-h-screen bg-[#040711] flex items-center justify-center text-slate-400">
+        <div className="w-5 h-5 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
-        <Link to="/login" className="inline-flex items-center justify-center">
+    <div className="min-h-screen bg-[#040711] text-slate-100 flex flex-col justify-center items-center py-12 px-4 relative select-none">
+      <div className="absolute inset-0 bg-tech-grid opacity-25 pointer-events-none" />
+
+      <div className="w-full max-w-md text-center relative z-10">
+        <div className="inline-flex p-2 px-4 rounded-xl bg-white/95 backdrop-blur-xl shadow-lg border border-white/40 mb-3">
           <img
             src="/logo.png"
             alt="GENFREX"
-            className="h-16 w-auto object-contain"
+            className="h-8 w-auto object-contain"
           />
-        </Link>
-        <h2 className="mt-4 text-2xl font-bold text-slate-900">Register Account</h2>
-        <p className="mt-1 text-xs text-slate-500">
-          Already have an account?{' '}
-          <Link to="/login" className="font-semibold text-indigo-600 hover:text-indigo-500">
-            Sign in
-          </Link>
-        </p>
-      </div>
-
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-white py-8 px-6 shadow-card rounded-2xl border border-slate-200/80 sm:px-10">
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <Input
-              label="Your Full Name"
-              name="name"
-              icon={User}
-              placeholder="e.g. Alex Rivera"
-              value={formData.name}
-              onChange={handleChange}
-              required
-            />
-
-            <Input
-              label="Agency / Studio Name"
-              name="companyName"
-              icon={Building}
-              placeholder="e.g. Apex Digital Studio"
-              value={formData.companyName}
-              onChange={handleChange}
-            />
-
-            <Input
-              label="Work Email"
-              name="email"
-              type="email"
-              icon={Mail}
-              placeholder="alex@apexdigital.com"
-              value={formData.email}
-              onChange={handleChange}
-              required
-            />
-
-            <Input
-              label="Password"
-              name="password"
-              type="password"
-              icon={Lock}
-              placeholder="At least 6 characters"
-              value={formData.password}
-              onChange={handleChange}
-              required
-            />
-
-            <div className="pt-2">
-              <Button type="submit" size="md" className="w-full" loading={loading}>
-                Create Account <ArrowRight className="w-4 h-4 ml-1" />
-              </Button>
-            </div>
-          </form>
         </div>
+
+        <div className="glass-panel p-8 rounded-2xl border border-white/15 bg-[#090e1f]/90 shadow-2xl text-center space-y-4">
+          <div className="w-12 h-12 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center mx-auto">
+            <Lock className="w-6 h-6" />
+          </div>
+
+          <h2 className="text-xl font-bold text-white tracking-tight">
+            Public Registration Closed
+          </h2>
+
+          <p className="text-xs text-slate-300 leading-relaxed">
+            Self-registration is disabled for enterprise security. All accounts for HR Officers, Workers, and Clients are provisioned directly by the Platform Administrator.
+          </p>
+
+          <div className="pt-2">
+            <Link to="/login">
+              <Button size="md" className="w-full">
+                <span>Go to Authorized Sign-In</span>
+                <ArrowRight className="w-4 h-4 ml-1" />
+              </Button>
+            </Link>
+          </div>
+        </div>
+
+        <p className="mt-4 text-[10px] text-slate-500">
+          &copy; {new Date().getFullYear()} GENFREX Business Management Platform
+        </p>
       </div>
     </div>
   );

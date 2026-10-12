@@ -94,45 +94,72 @@ const sendAppointmentEmail = async ({
     });
   }
 
-  // Check if SMTP is configured
-  const host = process.env.SMTP_HOST;
-  const user = process.env.SMTP_USER || process.env.GMAIL_USER;
-  const pass = process.env.SMTP_PASS || process.env.GMAIL_APP_PASSWORD;
+  // Check if SMTP or Gmail is configured
+  const host = process.env.SMTP_HOST || (process.env.GMAIL_USER ? 'smtp.gmail.com' : null);
+  const user = (process.env.SMTP_USER || process.env.GMAIL_USER || '').trim();
+  const pass = (process.env.SMTP_PASS || process.env.GMAIL_APP_PASSWORD || '').replace(/\s+/g, '');
+  const port = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : 587;
+  const isSecure = process.env.SMTP_SECURE === 'true' || port === 465;
 
-  if (host && user && pass) {
-    const transporter = nodemailer.createTransport({
-      host: host,
-      port: process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : 587,
-      secure: process.env.SMTP_SECURE === 'true',
-      auth: { user, pass }
-    });
+  if (user && pass) {
+    try {
+      const transportConfig = host && host.includes('gmail')
+        ? {
+            service: 'gmail',
+            auth: { user, pass }
+          }
+        : {
+            host: host || 'smtp.gmail.com',
+            port,
+            secure: isSecure,
+            auth: { user, pass },
+            tls: {
+              rejectUnauthorized: false
+            }
+          };
 
-    const info = await transporter.sendMail({
-      from: `"GENFREX People Operations" <${fromEmail}>`,
-      to: toCandidateEmail,
-      subject,
-      html: htmlBody,
-      attachments
-    });
+      const transporter = nodemailer.createTransport(transportConfig);
 
-    return {
-      success: true,
-      messageId: info.messageId || `msg_${Date.now()}`,
-      simulated: false
-    };
+      const info = await transporter.sendMail({
+        from: `"GENFREX People Operations" <${fromEmail}>`,
+        to: toCandidateEmail,
+        subject,
+        html: htmlBody,
+        attachments
+      });
+
+      console.log(`[Email Service - LIVE DISPATCH SUCCESS]`);
+      console.log(`   To: ${toCandidateEmail}`);
+      console.log(`   Message ID: ${info.messageId}`);
+
+      return {
+        success: true,
+        messageId: info.messageId || `msg_${Date.now()}`,
+        simulated: false
+      };
+    } catch (sendError) {
+      console.error(`[Email Service - LIVE DISPATCH FAILED]`, sendError.message);
+      throw new Error(`Email dispatch failed: ${sendError.message}. If using Gmail, ensure 2-Factor Authentication is ON and an App Password is used.`);
+    }
   } else {
     // Graceful development mode simulation when external SMTP credentials are not yet populated in .env
-    console.log(`[Email Service - Simulated Send]`);
-    console.log(`   From: ${fromEmail}`);
-    console.log(`   To: ${toCandidateEmail}`);
-    console.log(`   Subject: ${subject}`);
-    console.log(`   Attachment: ${pdfFileName || 'GENFREX_Appointment_Letter.pdf'}`);
-    console.log(`   Status: Send simulated successfully. Configure SMTP in server/.env for production live dispatch.`);
+    console.warn(`\n======================================================`);
+    console.warn(`⚠️ [Email Service - SIMULATED SEND ONLY]`);
+    console.warn(`   No SMTP / Gmail credentials configured in server/.env!`);
+    console.warn(`   From: ${fromEmail}`);
+    console.warn(`   To: ${toCandidateEmail}`);
+    console.warn(`   Subject: ${subject}`);
+    console.warn(`   Attachment: ${pdfFileName || 'GENFREX_Appointment_Letter.pdf'}`);
+    console.warn(`   To send REAL emails to candidate inboxes, add to server/.env:`);
+    console.warn(`     SMTP_USER=your_email@gmail.com`);
+    console.warn(`     SMTP_PASS=your_16_digit_gmail_app_password`);
+    console.warn(`======================================================\n`);
 
     return {
       success: true,
       messageId: `simulated_gfx_${Date.now()}_${Math.random().toString(36).substring(7)}`,
-      simulated: true
+      simulated: true,
+      warning: 'SMTP credentials not configured in server/.env. Email was simulated in console and not delivered to candidate inbox.'
     };
   }
 };

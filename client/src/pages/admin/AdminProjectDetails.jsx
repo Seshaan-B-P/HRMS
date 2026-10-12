@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { projectService } from '../../services/projectService';
 import { taskService } from '../../services/taskService';
 import { milestoneService } from '../../services/milestoneService';
 import { fileService } from '../../services/fileService';
 import { commentService } from '../../services/commentService';
 import { activityService } from '../../services/activityService';
+import { hrService } from '../../services/hrService';
+import { taskRequestService } from '../../services/taskRequestService';
 import { PROJECT_STATUS } from '../../utils/constants';
 import { formatDate, formatCurrency } from '../../utils/formatters';
 import ProgressBar from '../../components/common/ProgressBar';
@@ -23,6 +25,7 @@ import ProjectModal from '../../components/projects/ProjectModal';
 import CompletionSummaryModal from '../../components/projects/CompletionSummaryModal';
 import AIProjectSummaryModal from '../../components/projects/AIProjectSummaryModal';
 import ProjectStageRoadmap from '../../components/projects/ProjectStageRoadmap';
+import LetterPreviewModal from '../../components/hr/LetterPreviewModal';
 import {
   FolderKanban,
   CheckSquare,
@@ -38,7 +41,15 @@ import {
   Upload,
   User,
   Calendar,
-  DollarSign
+  DollarSign,
+  Briefcase,
+  FileCheck,
+  UserCheck,
+  Building2,
+  ExternalLink,
+  Users,
+  CheckCircle2,
+  X
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -52,6 +63,9 @@ const AdminProjectDetails = () => {
   const [files, setFiles] = useState([]);
   const [comments, setComments] = useState([]);
   const [activities, setActivities] = useState([]);
+  const [projectAppointments, setProjectAppointments] = useState([]);
+  const [taskRequests, setTaskRequests] = useState([]);
+  const [candidates, setCandidates] = useState([]);
   const [activeTab, setActiveTab] = useState('overview');
   const [loading, setLoading] = useState(true);
 
@@ -64,17 +78,34 @@ const AdminProjectDetails = () => {
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [completionModalOpen, setCompletionModalOpen] = useState(false);
   const [aiModalOpen, setAiModalOpen] = useState(false);
+  const [createApptModalOpen, setCreateApptModalOpen] = useState(false);
+  const [previewLetter, setPreviewLetter] = useState(null);
+
+  // Quick Appointment Creation Modal Form State
+  const [apptForm, setApptForm] = useState({
+    candidateMode: 'existing', // 'existing' or 'new'
+    candidateId: '',
+    newCandidateName: '',
+    newCandidateEmail: '',
+    newCandidatePhone: '',
+    requirementId: '',
+    workerId: '',
+    role: ''
+  });
 
   const fetchProjectData = async () => {
     try {
       setLoading(true);
-      const [projRes, tasksRes, milesRes, filesRes, commsRes, actsRes] = await Promise.all([
+      const [projRes, tasksRes, milesRes, filesRes, commsRes, actsRes, apptsRes, reqsRes, candRes] = await Promise.all([
         projectService.getProjectById(projectId),
         taskService.getProjectTasks(projectId),
         milestoneService.getProjectMilestones(projectId),
         fileService.getProjectFiles(projectId),
         commentService.getProjectComments(projectId),
-        activityService.getProjectActivities(projectId)
+        activityService.getProjectActivities(projectId),
+        hrService.getAppointments({ projectId }).catch(() => ({ success: false })),
+        taskRequestService.getTaskRequests({ project: projectId }).catch(() => ({ success: false })),
+        hrService.getCandidates({ limit: 100 }).catch(() => ({ success: false }))
       ]);
 
       if (projRes.success) setProject(projRes.project);
@@ -83,6 +114,9 @@ const AdminProjectDetails = () => {
       if (filesRes.success) setFiles(filesRes.files || []);
       if (commsRes.success) setComments(commsRes.comments || []);
       if (actsRes.success) setActivities(actsRes.activities || []);
+      if (apptsRes.success) setProjectAppointments(apptsRes.appointments || []);
+      if (reqsRes.success) setTaskRequests(reqsRes.taskRequests || reqsRes.requests || []);
+      if (candRes.success) setCandidates(candRes.candidates || []);
     } catch (err) {
       toast.error('Failed to load project details.');
       navigate('/admin/projects');
@@ -258,7 +292,7 @@ const AdminProjectDetails = () => {
         fetchProjectData();
       }
     } catch (err) {
-      toast.error('Failed to post comment.');
+      toast.error(err.response?.data?.message || 'Feedback post failed.');
       throw err;
     }
   };
@@ -266,31 +300,82 @@ const AdminProjectDetails = () => {
   const handleDeleteComment = async (commentId) => {
     try {
       await commentService.deleteComment(commentId);
-      toast.success('Comment deleted.');
+      toast.success('Comment removed.');
       fetchProjectData();
     } catch (err) {
-      toast.error('Failed to delete comment.');
+      toast.error('Failed to remove comment.');
     }
   };
 
-  if (loading || !project) {
+  // Create HR Appointment Action Handler
+  const handleOpenCreateAppt = (prefill = {}) => {
+    setApptForm({
+      candidateMode: 'existing',
+      candidateId: prefill.candidateId || '',
+      newCandidateName: '',
+      newCandidateEmail: '',
+      newCandidatePhone: '',
+      requirementId: prefill.requirementId || '',
+      workerId: prefill.workerId || '',
+      role: prefill.role || ''
+    });
+    setCreateApptModalOpen(true);
+  };
+
+  const handleProceedToApptBuilder = async (e) => {
+    e.preventDefault();
+    try {
+      let targetCandId = apptForm.candidateId;
+
+      // If new candidate chosen inline, create candidate record first
+      if (apptForm.candidateMode === 'new') {
+        if (!apptForm.newCandidateName || !apptForm.newCandidateEmail || !apptForm.newCandidatePhone) {
+          toast.error('Candidate name, email, and phone are required.');
+          return;
+        }
+        const candRes = await hrService.createCandidate({
+          name: apptForm.newCandidateName,
+          email: apptForm.newCandidateEmail,
+          phone: apptForm.newCandidatePhone,
+          designation: apptForm.role || 'Software Trainee',
+          source: 'Client Project',
+          projectId: project._id,
+          clientId: project.client?._id || project.client,
+          requirementId: apptForm.requirementId || null,
+          workerId: apptForm.workerId || null
+        });
+        if (candRes.success) {
+          targetCandId = candRes.candidate._id;
+        }
+      }
+
+      setCreateApptModalOpen(false);
+
+      // Navigate to Appointment Builder with prefilled context
+      const queryParams = new URLSearchParams({
+        projectId: project._id,
+        clientId: project.client?._id || project.client || '',
+        ...(targetCandId && { candidateId: targetCandId }),
+        ...(apptForm.requirementId && { requirementId: apptForm.requirementId }),
+        ...(apptForm.workerId && { workerId: apptForm.workerId }),
+        ...(apptForm.role && { designation: apptForm.role })
+      });
+
+      navigate(`/hr/appointments/create?${queryParams.toString()}`);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to prepare appointment.');
+    }
+  };
+
+  if (loading) {
     return (
-      <div className="py-16 text-center text-xs text-slate-500 animate-pulse">
-        Loading project workspace...
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
       </div>
     );
   }
 
-  const statusConfig = PROJECT_STATUS[project.status] || {
-    label: project.status,
-    color: 'bg-slate-100 text-slate-700'
-  };
-
-  const healthConfig = {
-    ON_TRACK: { label: 'On Track', color: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
-    AT_RISK: { label: 'At Risk', color: 'bg-amber-50 text-amber-700 border-amber-200' },
-    OVERDUE_BLOCKED: { label: 'Overdue / Blocked', color: 'bg-rose-50 text-rose-700 border-rose-200' }
-  }[project.health || 'ON_TRACK'] || { label: 'On Track', color: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
+  if (!project) return null;
 
   const totalTasks = tasks.length;
   const completedTasks = tasks.filter((t) => t.status === 'COMPLETED').length;
@@ -300,33 +385,32 @@ const AdminProjectDetails = () => {
 
   return (
     <div className="space-y-6">
-      {/* Top Banner Card */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-card">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+      {/* Top Project Banner */}
+      <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-card">
+        <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
           <div>
-            <div className="flex items-center gap-2.5 flex-wrap">
-              <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
-                {project.name}
-              </h1>
-              <span
-                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${statusConfig.color}`}
-              >
-                {statusConfig.label}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                project.status === 'COMPLETED' ? 'bg-emerald-100 text-emerald-800' :
+                project.status === 'IN_PROGRESS' ? 'bg-blue-100 text-blue-800' :
+                'bg-slate-100 text-slate-800'
+              }`}>
+                {project.status?.replace('_', ' ')}
               </span>
-              <span
-                className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border bg-indigo-50 text-indigo-700 border-indigo-200"
-              >
-                Stage: {project.stage ? project.stage.replace('_', ' ') : 'PLANNING'}
+              <span className="text-xs px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 font-medium">
+                Stage: <strong>{project.stage?.replace('_', ' ')}</strong>
               </span>
-              <span
-                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${healthConfig.color}`}
-              >
-                Health: {healthConfig.label}
+              <span className="text-xs px-2.5 py-0.5 rounded-full bg-cyan-50 text-cyan-700 font-medium">
+                Health: <strong>{project.health?.replace('_', ' ')}</strong>
               </span>
             </div>
 
-            <p className="text-xs text-slate-500 mt-1 max-w-2xl leading-relaxed">
-              {project.description || 'No description provided.'}
+            <h1 className="text-2xl font-black text-slate-900 tracking-tight mt-2">
+              {project.name}
+            </h1>
+
+            <p className="text-xs text-slate-500 mt-1 max-w-2xl line-clamp-2">
+              {project.description || 'No detailed description set for this project.'}
             </p>
 
             {/* Metadata Tags */}
@@ -353,13 +437,23 @@ const AdminProjectDetails = () => {
           {/* Action Buttons */}
           <div className="flex flex-wrap items-center gap-2">
             <Button
+              variant="primary"
+              size="sm"
+              onClick={() => handleOpenCreateAppt()}
+              icon={FileCheck}
+              className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
+            >
+              Create HR Appointment
+            </Button>
+
+            <Button
               variant="outline"
               size="sm"
               onClick={() => setAiModalOpen(true)}
               icon={Sparkles}
               className="border-indigo-200 text-indigo-700 bg-indigo-50/50 hover:bg-indigo-50"
             >
-              ✨ Generate AI Summary
+              AI Summary
             </Button>
 
             <Button
@@ -368,7 +462,7 @@ const AdminProjectDetails = () => {
               onClick={() => setCompletionModalOpen(true)}
               icon={Award}
             >
-              Completion Summary
+              Summary
             </Button>
 
             <Button
@@ -407,14 +501,14 @@ const AdminProjectDetails = () => {
             </div>
 
             <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-100">
-              <span className="text-slate-500 text-[11px]">Pending Reviews</span>
-              <p className="font-bold text-amber-600 mt-0.5">{pendingApprovals} deliverable{pendingApprovals === 1 ? '' : 's'}</p>
+              <span className="text-slate-500 text-[11px]">Client Requirements</span>
+              <p className="font-bold text-indigo-600 mt-0.5">{taskRequests.length} requests</p>
             </div>
 
             <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-100">
-              <span className="text-slate-500 text-[11px]">Client Sign-Offs</span>
+              <span className="text-slate-500 text-[11px]">HR Appointments</span>
               <p className="font-bold text-emerald-600 mt-0.5">
-                {files.filter((f) => f.approvalStatus === 'APPROVED').length} approved
+                {projectAppointments.length} linked offer{projectAppointments.length === 1 ? '' : 's'}
               </p>
             </div>
           </div>
@@ -423,10 +517,13 @@ const AdminProjectDetails = () => {
 
       {/* Tabs Header */}
       <div className="border-b border-slate-200">
-        <nav className="flex space-x-6 overflow-x-auto pb-px">
+        <nav className="flex space-x-5 overflow-x-auto pb-px">
           {[
             { id: 'overview', label: 'Overview', icon: FolderKanban },
             { id: 'tasks', label: `Tasks (${tasks.length})`, icon: CheckSquare },
+            { id: 'requirements', label: `Requirements (${taskRequests.length})`, icon: Briefcase },
+            { id: 'workers', label: `Workers (${project.assignedWorkers?.length || 0})`, icon: User },
+            { id: 'hr-appointments', label: `HR Appointments (${projectAppointments.length})`, icon: FileCheck },
             { id: 'milestones', label: `Milestones (${milestones.length})`, icon: Layers },
             { id: 'files', label: `Files & Deliverables (${files.length})`, icon: Files },
             { id: 'feedback', label: `Feedback (${comments.length})`, icon: MessageSquare },
@@ -440,7 +537,7 @@ const AdminProjectDetails = () => {
                 onClick={() => setActiveTab(tab.id)}
                 className={`flex items-center gap-2 py-3 px-1 border-b-2 font-medium text-xs whitespace-nowrap transition-colors ${
                   isActive
-                    ? 'border-indigo-600 text-indigo-600 font-semibold'
+                    ? 'border-blue-600 text-blue-600 font-bold'
                     : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
                 }`}
               >
@@ -467,6 +564,74 @@ const AdminProjectDetails = () => {
               <p className="text-xs text-slate-700 leading-relaxed whitespace-pre-line">
                 {project.description || 'No detailed project brief provided.'}
               </p>
+            </Card>
+
+            {/* Linked HR Appointments Card in Overview */}
+            <Card
+              title="HR OfferFlow Appointments"
+              subtitle="Candidate appointments linked to this client engagement"
+              action={
+                <Button
+                  size="xs"
+                  variant="primary"
+                  onClick={() => handleOpenCreateAppt()}
+                  icon={Plus}
+                >
+                  Create HR Appointment
+                </Button>
+              }
+            >
+              {projectAppointments.length === 0 ? (
+                <div className="py-6 text-center text-xs text-slate-400">
+                  <FileCheck className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                  <p>No HR candidate appointments linked to this project yet.</p>
+                  <button
+                    onClick={() => handleOpenCreateAppt()}
+                    className="mt-2 text-blue-600 font-bold hover:underline"
+                  >
+                    + Create HR Appointment Now
+                  </button>
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-100 text-xs">
+                  {projectAppointments.map((app) => (
+                    <div key={app._id} className="py-3 flex items-center justify-between gap-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-slate-900">{app.referenceNumber}</span>
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                            app.status === 'APPROVED' ? 'bg-emerald-100 text-emerald-800' :
+                            app.status === 'PENDING_APPROVAL' ? 'bg-amber-100 text-amber-800' :
+                            app.status === 'SENT' ? 'bg-blue-100 text-blue-800' :
+                            app.status === 'ACCEPTED' ? 'bg-purple-100 text-purple-800' :
+                            'bg-slate-100 text-slate-700'
+                          }`}>
+                            {app.status?.replace('_', ' ')}
+                          </span>
+                        </div>
+                        <p className="text-slate-600 text-[11px] mt-0.5">
+                          Candidate: <strong>{app.candidateId?.name || app.candidate?.name}</strong> • Role: <strong>{app.designation}</strong>
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setPreviewLetter(app)}
+                          className="px-2 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-[11px]"
+                        >
+                          Preview
+                        </button>
+                        <Link
+                          to={`/hr/appointments/${app._id}`}
+                          className="px-2 py-1 rounded bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold text-[11px]"
+                        >
+                          Details &rarr;
+                        </Link>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </Card>
 
             <Card
@@ -498,19 +663,50 @@ const AdminProjectDetails = () => {
           <div className="space-y-6">
             <Card title="Client Stakeholder">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-700 font-bold text-sm flex items-center justify-center shrink-0">
+                <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-700 font-bold text-sm flex items-center justify-center shrink-0">
                   {project.client?.name?.charAt(0) || 'C'}
                 </div>
                 <div>
                   <h4 className="text-xs font-bold text-slate-900">{project.client?.name}</h4>
                   <p className="text-[11px] text-slate-500">{project.client?.email}</p>
                   {project.client?.companyName && (
-                    <p className="text-[10px] text-indigo-600 font-semibold mt-0.5">
+                    <p className="text-[10px] text-blue-600 font-semibold mt-0.5">
                       {project.client.companyName}
                     </p>
                   )}
                 </div>
               </div>
+            </Card>
+
+            <Card
+              title="Assigned Workers"
+              subtitle="Talent currently deployed on this project"
+              action={
+                <Button size="xs" onClick={() => setActiveTab('workers')}>
+                  View All
+                </Button>
+              }
+            >
+              {!project.assignedWorkers || project.assignedWorkers.length === 0 ? (
+                <p className="text-xs text-slate-400 py-2">No workers assigned to this project yet.</p>
+              ) : (
+                <div className="space-y-2.5 text-xs">
+                  {project.assignedWorkers.map((worker) => (
+                    <div key={worker._id} className="flex items-center justify-between py-1.5 border-b border-slate-50">
+                      <div>
+                        <p className="font-bold text-slate-900">{worker.name}</p>
+                        <p className="text-[10px] text-slate-400">{worker.title || 'Engineer'}</p>
+                      </div>
+                      <button
+                        onClick={() => handleOpenCreateAppt({ workerId: worker._id, role: worker.title || 'Software Engineer' })}
+                        className="text-[10px] text-blue-600 font-semibold hover:underline"
+                      >
+                        + Offer Letter
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </Card>
 
             <Card title="Live Activity Stream" subtitle="Recent actions on this project">
@@ -552,6 +748,255 @@ const AdminProjectDetails = () => {
             }}
             onDeleteTask={handleDeleteTask}
           />
+        </div>
+      )}
+
+      {/* Tab: Requirements (Client Task Requests) */}
+      {activeTab === 'requirements' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">Client Requirements & Task Requests</h3>
+              <p className="text-xs text-slate-500">
+                Requirements submitted by the client for engineering fulfillment and talent allocation
+              </p>
+            </div>
+
+            <Button
+              size="sm"
+              variant="primary"
+              onClick={() => handleOpenCreateAppt()}
+              icon={FileCheck}
+            >
+              Create HR Appointment
+            </Button>
+          </div>
+
+          {taskRequests.length === 0 ? (
+            <div className="bg-white rounded-xl border border-slate-200 p-8 text-center text-xs text-slate-400">
+              <Briefcase className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+              <p>No client requirements submitted for this project yet.</p>
+            </div>
+          ) : (
+            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                  <tr>
+                    <th className="py-3 px-4">Requirement / Title</th>
+                    <th className="py-3 px-4">Priority</th>
+                    <th className="py-3 px-4">Status</th>
+                    <th className="py-3 px-4">Requested Deadline</th>
+                    <th className="py-3 px-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {taskRequests.map((req) => (
+                    <tr key={req._id} className="hover:bg-slate-50/60 transition-colors">
+                      <td className="py-3 px-4">
+                        <p className="font-bold text-slate-900">{req.title}</p>
+                        <p className="text-[11px] text-slate-500 line-clamp-1">{req.description}</p>
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          req.priority === 'URGENT' ? 'bg-rose-100 text-rose-800' :
+                          req.priority === 'HIGH' ? 'bg-amber-100 text-amber-800' :
+                          'bg-slate-100 text-slate-700'
+                        }`}>
+                          {req.priority}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          req.status === 'APPROVED' ? 'bg-emerald-100 text-emerald-800' :
+                          req.status === 'PENDING_APPROVAL' ? 'bg-amber-100 text-amber-800' :
+                          'bg-slate-100 text-slate-700'
+                        }`}>
+                          {req.status?.replace('_', ' ')}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-slate-600 font-medium">
+                        {req.requestedDeadline ? formatDate(req.requestedDeadline) : 'Flexible'}
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        <Button
+                          size="xs"
+                          variant="secondary"
+                          onClick={() => handleOpenCreateAppt({ requirementId: req._id, role: req.title })}
+                          className="text-[11px]"
+                        >
+                          Assign Talent & Offer
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Tab: Workers & Talent Assignment */}
+      {activeTab === 'workers' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">Talent Assignment & Engineering Staff</h3>
+              <p className="text-xs text-slate-500">
+                Engineers assigned to this client project with ability to initiate HR appointment letters
+              </p>
+            </div>
+
+            <Button
+              size="sm"
+              variant="primary"
+              onClick={() => handleOpenCreateAppt()}
+              icon={FileCheck}
+            >
+              Create HR Appointment
+            </Button>
+          </div>
+
+          {!project.assignedWorkers || project.assignedWorkers.length === 0 ? (
+            <div className="bg-white rounded-xl border border-slate-200 p-8 text-center text-xs text-slate-400">
+              <Users className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+              <p>No workers assigned to this project yet.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {project.assignedWorkers.map((worker) => (
+                <div key={worker._id} className="p-4 rounded-xl border border-slate-200 bg-white shadow-sm flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-full bg-blue-100 text-blue-700 font-bold text-xs flex items-center justify-center shrink-0">
+                        {worker.name?.charAt(0) || 'W'}
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-slate-900 text-xs">{worker.name}</h4>
+                        <p className="text-[10px] text-slate-400">{worker.email}</p>
+                      </div>
+                    </div>
+                    <div className="mt-3 text-[11px] text-slate-600">
+                      <p>Role: <strong>{worker.title || 'Software Engineer'}</strong></p>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
+                    <span className="text-[10px] text-emerald-600 font-semibold flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3" /> Assigned
+                    </span>
+                    <button
+                      onClick={() => handleOpenCreateAppt({ workerId: worker._id, role: worker.title || 'Software Engineer' })}
+                      className="text-xs font-semibold text-blue-600 hover:text-blue-700 hover:underline"
+                    >
+                      Issue Offer Letter &rarr;
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Tab: HR Appointments */}
+      {activeTab === 'hr-appointments' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">HR OfferFlow Appointments</h3>
+              <p className="text-xs text-slate-500">
+                Official candidate appointment letters linked directly to this project
+              </p>
+            </div>
+
+            <Button
+              size="sm"
+              variant="primary"
+              onClick={() => handleOpenCreateAppt()}
+              icon={Plus}
+            >
+              Create HR Appointment
+            </Button>
+          </div>
+
+          {projectAppointments.length === 0 ? (
+            <div className="bg-white rounded-xl border border-slate-200 p-10 text-center text-xs text-slate-400">
+              <FileCheck className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+              <p className="font-bold text-slate-700">No project-linked HR appointments yet.</p>
+              <p className="mt-1 text-[11px]">Generate verified trainee or employment offers for this client project.</p>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => handleOpenCreateAppt()}
+                className="mt-4"
+              >
+                + Create Appointment Letter
+              </Button>
+            </div>
+          ) : (
+            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                  <tr>
+                    <th className="py-3 px-4">Reference</th>
+                    <th className="py-3 px-4">Candidate</th>
+                    <th className="py-3 px-4">Required Role</th>
+                    <th className="py-3 px-4">Status</th>
+                    <th className="py-3 px-4">Joining Date</th>
+                    <th className="py-3 px-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {projectAppointments.map((app) => (
+                    <tr key={app._id} className="hover:bg-slate-50/60 transition-colors">
+                      <td className="py-3 px-4 font-bold text-slate-900">
+                        {app.referenceNumber}
+                      </td>
+                      <td className="py-3 px-4">
+                        <p className="font-semibold text-slate-900">{app.candidateId?.name || app.candidate?.name}</p>
+                        <p className="text-[10px] text-slate-400">{app.candidateId?.email || app.candidate?.email}</p>
+                      </td>
+                      <td className="py-3 px-4 text-slate-700 font-medium">
+                        {app.designation}
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          app.status === 'APPROVED' ? 'bg-emerald-100 text-emerald-800' :
+                          app.status === 'PENDING_APPROVAL' ? 'bg-amber-100 text-amber-800' :
+                          app.status === 'SENT' ? 'bg-blue-100 text-blue-800' :
+                          app.status === 'ACCEPTED' ? 'bg-purple-100 text-purple-800' :
+                          app.status === 'REJECTED' ? 'bg-rose-100 text-rose-800' :
+                          'bg-slate-100 text-slate-700'
+                        }`}>
+                          {app.status?.replace('_', ' ')}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-slate-700 font-medium">
+                        {app.joiningDate ? formatDate(app.joiningDate) : 'TBD'}
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => setPreviewLetter(app)}
+                            className="px-2 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-[11px]"
+                          >
+                            Preview
+                          </button>
+                          <Link
+                            to={`/hr/appointments/${app._id}`}
+                            className="px-2 py-1 rounded bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold text-[11px]"
+                          >
+                            Details &rarr;
+                          </Link>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 
@@ -648,6 +1093,205 @@ const AdminProjectDetails = () => {
         </div>
       )}
 
+      {/* Modal: Create HR Appointment Pre-flight */}
+      {createApptModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden my-8">
+            <div className="p-5 flex items-center justify-between border-b bg-slate-50 border-slate-200">
+              <div className="flex items-center gap-2">
+                <FileCheck className="w-5 h-5 text-blue-600" />
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">Create HR Appointment</h3>
+                  <p className="text-[11px] text-slate-500">
+                    Project: <strong className="text-slate-800">{project.name}</strong>
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setCreateApptModalOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleProceedToApptBuilder} className="p-6 space-y-4 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Candidate Source:
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setApptForm((prev) => ({ ...prev, candidateMode: 'existing' }))}
+                    className={`py-2 px-3 rounded-lg border font-semibold text-center ${
+                      apptForm.candidateMode === 'existing'
+                        ? 'bg-blue-50 border-blue-600 text-blue-700'
+                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    Select Existing Candidate
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setApptForm((prev) => ({ ...prev, candidateMode: 'new' }))}
+                    className={`py-2 px-3 rounded-lg border font-semibold text-center ${
+                      apptForm.candidateMode === 'new'
+                        ? 'bg-blue-50 border-blue-600 text-blue-700'
+                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    + Register New Candidate
+                  </button>
+                </div>
+              </div>
+
+              {apptForm.candidateMode === 'existing' ? (
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Select Talent / Candidate:
+                  </label>
+                  <select
+                    value={apptForm.candidateId}
+                    onChange={(e) => {
+                      const cand = candidates.find((c) => c._id === e.target.value);
+                      setApptForm((prev) => ({
+                        ...prev,
+                        candidateId: e.target.value,
+                        role: cand?.designation || prev.role
+                      }));
+                    }}
+                    className="w-full p-2.5 rounded-lg border border-slate-300 text-slate-900 focus:outline-none focus:border-blue-500"
+                  >
+                    <option value="">-- Choose Candidate from Talent Pool --</option>
+                    {candidates.map((c) => (
+                      <option key={c._id} value={c._id}>
+                        {c.name} ({c.designation}) — {c.employmentType}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <div className="space-y-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Candidate Full Name *</label>
+                    <input
+                      type="text"
+                      required
+                      value={apptForm.newCandidateName}
+                      onChange={(e) => setApptForm((prev) => ({ ...prev, newCandidateName: e.target.value }))}
+                      placeholder="e.g. John Doe"
+                      className="w-full p-2 rounded-lg border border-slate-300 text-slate-900 focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Email Address *</label>
+                    <input
+                      type="email"
+                      required
+                      value={apptForm.newCandidateEmail}
+                      onChange={(e) => setApptForm((prev) => ({ ...prev, newCandidateEmail: e.target.value }))}
+                      placeholder="john.doe@example.com"
+                      className="w-full p-2 rounded-lg border border-slate-300 text-slate-900 focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Phone Number *</label>
+                    <input
+                      type="text"
+                      required
+                      value={apptForm.newCandidatePhone}
+                      onChange={(e) => setApptForm((prev) => ({ ...prev, newCandidatePhone: e.target.value }))}
+                      placeholder="+91 9876543210"
+                      className="w-full p-2 rounded-lg border border-slate-300 text-slate-900 focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Requirement & Role */}
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Link Client Requirement (Optional):
+                </label>
+                <select
+                  value={apptForm.requirementId}
+                  onChange={(e) => {
+                    const req = taskRequests.find((r) => r._id === e.target.value);
+                    setApptForm((prev) => ({
+                      ...prev,
+                      requirementId: e.target.value,
+                      role: req?.title || prev.role
+                    }));
+                  }}
+                  className="w-full p-2.5 rounded-lg border border-slate-300 text-slate-900 focus:outline-none focus:border-blue-500"
+                >
+                  <option value="">-- No specific requirement selected --</option>
+                  {taskRequests.map((r) => (
+                    <option key={r._id} value={r._id}>
+                      {r.title} ({r.priority})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Required Role / Designation:
+                </label>
+                <input
+                  type="text"
+                  value={apptForm.role}
+                  onChange={(e) => setApptForm((prev) => ({ ...prev, role: e.target.value }))}
+                  placeholder="e.g. React Developer"
+                  className="w-full p-2.5 rounded-lg border border-slate-300 text-slate-900 focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              {/* Worker mentor / assignment */}
+              {project.assignedWorkers && project.assignedWorkers.length > 0 && (
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Assign Worker / Mentor (Optional):
+                  </label>
+                  <select
+                    value={apptForm.workerId}
+                    onChange={(e) => setApptForm((prev) => ({ ...prev, workerId: e.target.value }))}
+                    className="w-full p-2.5 rounded-lg border border-slate-300 text-slate-900 focus:outline-none focus:border-blue-500"
+                  >
+                    <option value="">-- Direct Technical Lead Assignment --</option>
+                    {project.assignedWorkers.map((w) => (
+                      <option key={w._id} value={w._id}>
+                        {w.name} ({w.title || 'Engineer'})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div className="pt-3 border-t border-slate-200 flex items-center justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setCreateApptModalOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  variant="primary"
+                  size="sm"
+                >
+                  <span>Launch Appointment Builder</span>
+                  <ArrowRight className="w-3.5 h-3.5 ml-1" />
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Modals */}
       <ProjectModal
         isOpen={projectModalOpen}
@@ -690,6 +1334,15 @@ const AdminProjectDetails = () => {
         onClose={() => setAiModalOpen(false)}
         projectId={projectId}
       />
+
+      {previewLetter && (
+        <LetterPreviewModal
+          isOpen={!!previewLetter}
+          onClose={() => setPreviewLetter(null)}
+          appointment={previewLetter}
+          candidate={previewLetter.candidateId || previewLetter.candidate}
+        />
+      )}
     </div>
   );
 };

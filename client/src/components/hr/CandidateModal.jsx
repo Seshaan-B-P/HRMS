@@ -1,8 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { X, UserPlus, Save, Briefcase, Mail, Phone, MapPin } from 'lucide-react';
+import { X, UserPlus, Save, Briefcase, Mail, Phone, MapPin, FolderKanban } from 'lucide-react';
 import Button from '../common/Button';
+import { projectService } from '../../services/projectService';
+import { clientService } from '../../services/clientService';
+import { taskRequestService } from '../../services/taskRequestService';
+import { workerService } from '../../services/workerService';
 
 const CandidateModal = ({ isOpen, onClose, candidate, onSave, loading }) => {
+  const [projects, setProjects] = useState([]);
+  const [clients, setClients] = useState([]);
+  const [requirements, setRequirements] = useState([]);
+  const [workers, setWorkers] = useState([]);
+
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -17,8 +26,36 @@ const CandidateModal = ({ isOpen, onClose, candidate, onSave, loading }) => {
     compensation: 25000,
     compensationFrequency: 'STIPEND_MONTHLY',
     probationPeriod: '3 Months',
-    notes: ''
+    notes: '',
+    source: 'Direct HR',
+    clientId: '',
+    projectId: '',
+    requirementId: '',
+    workerId: ''
   });
+
+  useEffect(() => {
+    if (isOpen) {
+      loadContextData();
+    }
+  }, [isOpen]);
+
+  const loadContextData = async () => {
+    try {
+      const [projRes, clientRes, reqRes, workRes] = await Promise.all([
+        projectService.getProjects().catch(() => ({ success: false })),
+        clientService.getClients().catch(() => ({ success: false })),
+        taskRequestService.getTaskRequests().catch(() => ({ success: false })),
+        workerService.getWorkers().catch(() => ({ success: false }))
+      ]);
+      if (projRes.success) setProjects(projRes.projects || []);
+      if (clientRes.success) setClients(clientRes.clients || []);
+      if (reqRes.success) setRequirements(reqRes.taskRequests || reqRes.requests || []);
+      if (workRes.success) setWorkers(workRes.workers || []);
+    } catch (err) {
+      // Non-critical
+    }
+  };
 
   useEffect(() => {
     if (candidate) {
@@ -36,7 +73,12 @@ const CandidateModal = ({ isOpen, onClose, candidate, onSave, loading }) => {
         compensation: candidate.compensation || 25000,
         compensationFrequency: candidate.compensationFrequency || 'STIPEND_MONTHLY',
         probationPeriod: candidate.probationPeriod || '3 Months',
-        notes: candidate.notes || ''
+        notes: candidate.notes || '',
+        source: candidate.source || 'Direct HR',
+        clientId: candidate.clientId || candidate.client?._id || candidate.client || '',
+        projectId: candidate.projectId || candidate.project?._id || candidate.project || '',
+        requirementId: candidate.requirementId || candidate.requirement?._id || candidate.requirement || '',
+        workerId: candidate.workerId || candidate.assignedWorker?._id || candidate.assignedWorker || ''
       });
     } else {
       setFormData({
@@ -53,7 +95,12 @@ const CandidateModal = ({ isOpen, onClose, candidate, onSave, loading }) => {
         compensation: 25000,
         compensationFrequency: 'STIPEND_MONTHLY',
         probationPeriod: '3 Months',
-        notes: ''
+        notes: '',
+        source: 'Direct HR',
+        clientId: '',
+        projectId: '',
+        requirementId: '',
+        workerId: ''
       });
     }
   }, [candidate, isOpen]);
@@ -63,11 +110,28 @@ const CandidateModal = ({ isOpen, onClose, candidate, onSave, loading }) => {
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
+
+    if (name === 'projectId') {
+      const p = projects.find((proj) => proj._id === value);
+      if (p && p.client) {
+        setFormData((prev) => ({
+          ...prev,
+          projectId: value,
+          clientId: p.client?._id || p.client
+        }));
+      }
+    }
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    onSave(formData);
+    onSave({
+      ...formData,
+      client: formData.clientId || null,
+      project: formData.projectId || null,
+      requirement: formData.requirementId || null,
+      assignedWorker: formData.workerId || null
+    });
   };
 
   return (
@@ -143,6 +207,105 @@ const CandidateModal = ({ isOpen, onClose, candidate, onSave, loading }) => {
                 className="w-full p-2.5 rounded-lg border border-slate-300 text-slate-900 focus:outline-none focus:border-blue-500"
               />
             </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Candidate Source <span className="text-rose-500">*</span>
+              </label>
+              <select
+                name="source"
+                value={formData.source}
+                onChange={handleChange}
+                className="w-full p-2.5 rounded-lg border border-slate-300 text-slate-900 focus:outline-none focus:border-blue-500 bg-white font-medium"
+              >
+                <option value="Direct HR">Direct HR</option>
+                <option value="Client Project">Client Project</option>
+                <option value="Talent Pool">Talent Pool</option>
+                <option value="Internal">Internal</option>
+              </select>
+            </div>
+
+            {/* Optional Project Context fields if Sourced from ClientFlow */}
+            {(formData.source === 'Client Project' || formData.projectId) && (
+              <div className="sm:col-span-2 p-3 bg-blue-50/50 rounded-xl border border-blue-100 space-y-3">
+                <div className="flex items-center gap-1.5 font-bold text-blue-900">
+                  <FolderKanban className="w-3.5 h-3.5 text-blue-600" />
+                  <span>ClientFlow Project Assignment</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Client Project</label>
+                    <select
+                      name="projectId"
+                      value={formData.projectId}
+                      onChange={handleChange}
+                      className="w-full p-2 rounded-lg border border-slate-300 bg-white"
+                    >
+                      <option value="">-- Select Project --</option>
+                      {projects.map((p) => (
+                        <option key={p._id} value={p._id}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Client</label>
+                    <select
+                      name="clientId"
+                      value={formData.clientId}
+                      onChange={handleChange}
+                      className="w-full p-2 rounded-lg border border-slate-300 bg-white"
+                    >
+                      <option value="">-- Select Client --</option>
+                      {clients.map((c) => (
+                        <option key={c._id} value={c._id}>
+                          {c.companyName || c.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Client Requirement</label>
+                    <select
+                      name="requirementId"
+                      value={formData.requirementId}
+                      onChange={handleChange}
+                      className="w-full p-2 rounded-lg border border-slate-300 bg-white"
+                    >
+                      <option value="">-- None --</option>
+                      {requirements
+                        .filter((r) => !formData.projectId || String(r.project?._id || r.project) === String(formData.projectId))
+                        .map((r) => (
+                          <option key={r._id} value={r._id}>
+                            {r.title}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Assigned Worker / Mentor</label>
+                    <select
+                      name="workerId"
+                      value={formData.workerId}
+                      onChange={handleChange}
+                      className="w-full p-2 rounded-lg border border-slate-300 bg-white"
+                    >
+                      <option value="">-- None --</option>
+                      {workers.map((w) => (
+                        <option key={w._id} value={w._id}>
+                          {w.name} ({w.title || 'Engineer'})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">

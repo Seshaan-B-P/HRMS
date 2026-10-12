@@ -6,12 +6,72 @@ export const fileService = {
     return response.data;
   },
 
+  browseFiles: async (params = {}) => {
+    const response = await api.get('/files/browse', { params });
+    return response.data;
+  },
+
   uploadFile: async (formData) => {
     const response = await api.post('/files/upload', formData, {
       headers: {
         'Content-Type': 'multipart/form-data'
       }
     });
+    return response.data;
+  },
+
+  uploadConfidential: async (formData) => {
+    const response = await api.post('/files/upload-confidential', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    });
+    return response.data;
+  },
+
+  replaceFile: async (id, formData) => {
+    const response = await api.put(`/files/${id}/replace`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    });
+    return response.data;
+  },
+
+  getDownloadUrl: async (id) => {
+    const response = await api.get(`/files/${id}/download?json=true`);
+    return response.data;
+  },
+
+  downloadBlob: async (id, fileName) => {
+    const response = await api.get(`/files/${id}/download`, {
+      responseType: 'blob'
+    });
+    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', fileName || 'file');
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+    return true;
+  },
+
+  viewBlob: async (id) => {
+    const response = await api.get(`/files/${id}/view`, {
+      responseType: 'blob'
+    });
+    const contentType = response.headers['content-type'] || 'application/pdf';
+    const blob = new Blob([response.data], { type: contentType });
+    const url = window.URL.createObjectURL(blob);
+    window.open(url, '_blank');
+    setTimeout(() => window.URL.revokeObjectURL(url), 10000);
+    return true;
+  },
+
+  getStorageStats: async () => {
+    const response = await api.get('/files/storage-stats');
     return response.data;
   },
 

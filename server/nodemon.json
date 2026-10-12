@@ -1,0 +1,20 @@
+{
+  "watch": [
+    "controllers",
+    "middleware",
+    "models",
+    "routes",
+    "services",
+    "config",
+    "utils",
+    "server.js",
+    ".env"
+  ],
+  "ignore": [
+    "temp_*",
+    "uploads/*",
+    "test*.js",
+    "*.log"
+  ],
+  "ext": "js,json,env"
+}

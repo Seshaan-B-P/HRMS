@@ -29,6 +29,22 @@ const authenticateToken = async (req, res, next) => {
       });
     }
 
+    // Check account status
+    if (user.status === 'INACTIVE' || user.isActive === false) {
+      return res.status(403).json({
+        success: false,
+        message: 'Your account has been deactivated. Please contact the Administrator.'
+      });
+    }
+
+    // Invalidate session if tokenVersion does not match user's tokenVersion
+    if (decoded.tokenVersion !== undefined && decoded.tokenVersion !== (user.tokenVersion || 0)) {
+      return res.status(401).json({
+        success: false,
+        message: 'Your session has expired or was invalidated. Please log in again.'
+      });
+    }
+
     req.user = user;
     next();
   } catch (error) {

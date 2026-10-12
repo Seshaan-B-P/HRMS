@@ -154,8 +154,8 @@ const AdminPendingApprovals = () => {
                 <tr>
                   <td colSpan="9" className="py-12 text-center text-slate-400">
                     <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto mb-2" />
-                    <p className="font-semibold text-slate-700">Approval queue is clear!</p>
-                    <p className="text-[11px]">There are currently no appointment letters pending administrative sign-off.</p>
+                    <p className="font-semibold text-slate-700">No pending approvals — All caught up.</p>
+                    <p className="text-[11px] text-slate-400 mt-0.5">There are currently no appointment letters pending administrative sign-off.</p>
                   </td>
                 </tr>
               ) : (

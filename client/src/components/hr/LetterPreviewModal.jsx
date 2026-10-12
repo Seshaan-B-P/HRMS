@@ -24,6 +24,14 @@ const LetterPreviewModal = ({ isOpen, onClose, appointment, candidate }) => {
     year: 'numeric'
   });
 
+  const formatFrequency = (freq) => {
+    if (!freq) return 'Month';
+    if (freq === 'STIPEND_MONTHLY') return 'Month (Stipend)';
+    if (freq === 'MONTHLY') return 'Month';
+    if (freq === 'ANNUAL') return 'Per Annum';
+    return freq.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+  };
+
   const handlePrint = () => {
     window.print();
   };
@@ -179,7 +187,7 @@ const LetterPreviewModal = ({ isOpen, onClose, appointment, candidate }) => {
                 <div className="grid grid-cols-2 bg-slate-50 border-b border-slate-200 p-2">
                   <span className="font-semibold text-slate-600">Stipend / Compensation:</span>
                   <span className="font-bold text-emerald-700">
-                    INR {Number(appointment.compensation || 0).toLocaleString('en-IN')} / {appointment.compensationFrequency || 'Month'}
+                    INR {Number(appointment.compensation || 0).toLocaleString('en-IN')} / {formatFrequency(appointment.compensationFrequency)}
                   </span>
                 </div>
                 <div className="grid grid-cols-2 p-2">

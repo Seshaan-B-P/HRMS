@@ -39,7 +39,7 @@ const candidateSchema = new mongoose.Schema(
     },
     employmentType: {
       type: String,
-      enum: ['Full-time', 'Internship', 'Trainee'],
+      enum: ['Full-time', 'Internship', 'Trainee', 'FULL_TIME', 'INTERNSHIP', 'TRAINEE'],
       default: 'Trainee',
       required: true
     },
@@ -78,6 +78,43 @@ const candidateSchema = new mongoose.Schema(
       type: String,
       default: ''
     },
+    source: {
+      type: String,
+      enum: ['Direct HR', 'Client Project', 'Talent Pool', 'Internal'],
+      default: 'Direct HR'
+    },
+    clientId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
+    },
+    client: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
+    },
+    projectId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Project'
+    },
+    project: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Project'
+    },
+    requirementId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'TaskRequest'
+    },
+    requirement: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'TaskRequest'
+    },
+    workerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
+    },
+    assignedWorker: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
+    },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
@@ -89,7 +126,29 @@ const candidateSchema = new mongoose.Schema(
   }
 );
 
+// Pre-save hook to synchronize aliases
+candidateSchema.pre('save', function (next) {
+  if (this.client && !this.clientId) this.clientId = this.client;
+  if (this.clientId && !this.client) this.client = this.clientId;
+
+  if (this.project && !this.projectId) this.projectId = this.project;
+  if (this.projectId && !this.project) this.project = this.projectId;
+
+  if (this.requirement && !this.requirementId) this.requirementId = this.requirement;
+  if (this.requirementId && !this.requirement) this.requirement = this.requirementId;
+
+  if (this.assignedWorker && !this.workerId) this.workerId = this.assignedWorker;
+  if (this.workerId && !this.assignedWorker) this.assignedWorker = this.workerId;
+
+  next();
+});
+
 candidateSchema.index({ designation: 1 });
 candidateSchema.index({ candidateStatus: 1 });
+candidateSchema.index({ source: 1 });
+candidateSchema.index({ projectId: 1 });
+candidateSchema.index({ project: 1 });
+candidateSchema.index({ clientId: 1 });
+candidateSchema.index({ client: 1 });
 
 module.exports = mongoose.model('Candidate', candidateSchema);

@@ -157,6 +157,8 @@ const getHRAuditLogs = async (req, res, next) => {
   }
 };
 
+const { getMasterRoleTemplates } = require('../services/hrService');
+
 /**
  * Get / Update HR Settings
  */
@@ -172,12 +174,14 @@ const getHRSettings = async (req, res, next) => {
       });
     }
 
-    const template = await LetterTemplate.findOne({ active: true }).sort({ version: -1 });
+    const templates = await getMasterRoleTemplates();
+    const template = templates.find((t) => t.isDefault) || templates[0];
 
     res.status(200).json({
       success: true,
       settings,
-      template
+      template,
+      templates
     });
   } catch (error) {
     next(error);
@@ -210,6 +214,46 @@ const updateHRSettings = async (req, res, next) => {
 };
 
 /**
+ * Get All Master Role Letter Templates
+ */
+const getLetterTemplates = async (req, res, next) => {
+  try {
+    const templates = await getMasterRoleTemplates();
+    res.status(200).json({
+      success: true,
+      templates
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Create Master Role Letter Template
+ */
+const createLetterTemplate = async (req, res, next) => {
+  try {
+    if (req.user.role !== 'ADMIN') {
+      return res.status(403).json({ success: false, message: 'Only Admins can create Letter Templates.' });
+    }
+
+    const newTemplate = await LetterTemplate.create({
+      ...req.body,
+      active: true,
+      updatedBy: req.user._id
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'Role-based letter template created successfully.',
+      template: newTemplate
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
  * Update Letter Template
  */
 const updateLetterTemplate = async (req, res, next) => {
@@ -218,29 +262,56 @@ const updateLetterTemplate = async (req, res, next) => {
       return res.status(403).json({ success: false, message: 'Only Admins can modify Letter Templates.' });
     }
 
-    const latest = await LetterTemplate.findOne().sort({ version: -1 });
-    const newVersion = latest ? (latest.version || 1) + 1 : 1;
+    const templateId = req.params.id;
+    let target;
 
-    // Create a new version of template to preserve immutable snapshot for existing letters
-    const newTemplate = await LetterTemplate.create({
-      ...req.body,
-      version: newVersion,
-      active: true,
-      updatedBy: req.user._id
-    });
-
-    // Deactivate previous active templates
-    if (latest) {
-      await LetterTemplate.updateMany(
-        { _id: { $ne: newTemplate._id } },
-        { $set: { active: false } }
+    if (templateId) {
+      target = await LetterTemplate.findByIdAndUpdate(
+        templateId,
+        { ...req.body, updatedBy: req.user._id },
+        { new: true }
       );
+    } else {
+      const first = await LetterTemplate.findOne({ active: true });
+      if (first) {
+        target = await LetterTemplate.findByIdAndUpdate(
+          first._id,
+          { ...req.body, updatedBy: req.user._id },
+          { new: true }
+        );
+      } else {
+        target = await LetterTemplate.create({
+          ...req.body,
+          active: true,
+          updatedBy: req.user._id
+        });
+      }
     }
 
     res.status(200).json({
       success: true,
-      message: `Letter template updated to version ${newVersion}.`,
-      template: newTemplate
+      message: 'Letter template updated successfully.',
+      template: target
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Delete Letter Template
+ */
+const deleteLetterTemplate = async (req, res, next) => {
+  try {
+    if (req.user.role !== 'ADMIN') {
+      return res.status(403).json({ success: false, message: 'Only Admins can remove Letter Templates.' });
+    }
+
+    await LetterTemplate.findByIdAndUpdate(req.params.id, { active: false });
+
+    res.status(200).json({
+      success: true,
+      message: 'Role template deactivated successfully.'
     });
   } catch (error) {
     next(error);
@@ -253,5 +324,8 @@ module.exports = {
   getHRAuditLogs,
   getHRSettings,
   updateHRSettings,
-  updateLetterTemplate
+  getLetterTemplates,
+  createLetterTemplate,
+  updateLetterTemplate,
+  deleteLetterTemplate
 };

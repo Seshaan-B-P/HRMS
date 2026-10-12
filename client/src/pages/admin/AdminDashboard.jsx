@@ -25,8 +25,13 @@ import {
   Calendar,
   FileText,
   ShieldCheck,
-  UserPlus
+  UserPlus,
+  HardDrive,
+  Lock,
+  Cloud
 } from 'lucide-react';
+import { fileService } from '../../services/fileService';
+import { formatBytes } from '../../utils/formatters';
 import toast from 'react-hot-toast';
 
 const AdminDashboard = () => {
@@ -37,28 +42,39 @@ const AdminDashboard = () => {
   const [hrStats, setHrStats] = useState(null);
   const [recentPendingHR, setRecentPendingHR] = useState([]);
   const [upcomingJoining, setUpcomingJoining] = useState([]);
+  const [projectLinkedAppointments, setProjectLinkedAppointments] = useState([]);
+  const [storageStats, setStorageStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [projectModalOpen, setProjectModalOpen] = useState(false);
 
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
-      const [projRes, actRes, workRes, anaRes, hrRes] = await Promise.all([
+      const [projRes, actRes, workRes, anaRes, hrRes, apptsRes, storageRes] = await Promise.all([
         projectService.getProjects(),
         activityService.getRecentActivities(),
         workerService.getWorkers(),
         projectService.getAdminOverviewAnalytics(),
-        hrService.getHRStats().catch(() => ({ success: false }))
+        hrService.getHRStats().catch(() => ({ success: false })),
+        hrService.getAppointments({ limit: 50 }).catch(() => ({ success: false })),
+        fileService.getStorageStats().catch(() => ({ success: false }))
       ]);
 
       if (projRes.success) setProjects(projRes.projects || []);
       if (actRes.success) setActivities(actRes.activities || []);
       if (workRes.success) setWorkers(workRes.workers || []);
       if (anaRes.success) setAnalytics(anaRes.analytics);
+      if (storageRes.success) setStorageStats(storageRes.diagnostics);
       if (hrRes.success) {
         setHrStats(hrRes.stats);
         setRecentPendingHR(hrRes.recentPending || []);
         setUpcomingJoining(hrRes.upcomingJoining || []);
+      }
+      if (apptsRes.success) {
+        const linked = (apptsRes.appointments || []).filter(
+          (a) => a.projectId || a.project || a.clientId || a.client
+        );
+        setProjectLinkedAppointments(linked.length > 0 ? linked : apptsRes.appointments || []);
       }
     } catch (err) {
       toast.error('Failed to load dashboard data.');
@@ -116,10 +132,22 @@ const AdminDashboard = () => {
               )}
             </Button>
           </Link>
-          <Link to="/admin/task-requests">
+          <Link to="/admin/clients">
             <Button size="sm" variant="secondary">
-              <Inbox className="h-3.5 w-3.5 mr-1 text-blue-600" />
-              <span>Task Requests ({analytics?.taskRequests?.pendingApproval || 0})</span>
+              <Users className="h-3.5 w-3.5 mr-1 text-slate-600" />
+              <span>Add Client</span>
+            </Button>
+          </Link>
+          <Link to="/admin/workers">
+            <Button size="sm" variant="secondary">
+              <HardHat className="h-3.5 w-3.5 mr-1 text-slate-600" />
+              <span>Add Worker</span>
+            </Button>
+          </Link>
+          <Link to="/admin/hr-team">
+            <Button size="sm" variant="secondary">
+              <UserPlus className="h-3.5 w-3.5 mr-1 text-cyan-600" />
+              <span>Add HR Officer</span>
             </Button>
           </Link>
           <Button size="sm" onClick={() => setProjectModalOpen(true)}>
@@ -230,7 +258,7 @@ const AdminDashboard = () => {
       )}
 
       {/* Row 2: Pending HR Approvals Callout Widget */}
-      {recentPendingHR.length > 0 && (
+      {recentPendingHR.length > 0 ? (
         <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-4 shadow-sm">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
@@ -266,7 +294,59 @@ const AdminDashboard = () => {
             ))}
           </div>
         </div>
+      ) : (
+        <div className="rounded-xl border border-slate-200/80 bg-white p-3.5 shadow-sm flex items-center justify-between text-xs">
+          <div className="flex items-center gap-2 text-slate-600">
+            <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+            <span className="font-semibold text-slate-800">No pending approvals — All caught up.</span>
+          </div>
+          <Link to="/admin/hr/appointments" className="text-xs font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1">
+            <span>All HR Letters</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </Link>
+        </div>
       )}
+
+      {/* Cloud Storage Infrastructure Widget */}
+      <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100 shrink-0">
+            <HardDrive className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                Multi-Cloud Storage & Confidential Documents
+              </h2>
+              <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.2 rounded-full border border-blue-200">
+                {formatBytes(storageStats?.totalBytes || 0)}
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-500 mt-0.5">
+              Private S3 object storage for HR Offer Letters & contracts • Cloudinary CDN for project assets • Presigned token security
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="hidden sm:flex items-center gap-3 text-[11px] text-slate-600 mr-2">
+            <div className="flex items-center gap-1">
+              <Lock className="w-3.5 h-3.5 text-amber-600" />
+              <span>{storageStats?.confidentialCount || 0} S3 Private</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <Cloud className="w-3.5 h-3.5 text-blue-600" />
+              <span>{storageStats?.providers?.CLOUDINARY?.count || 0} Media</span>
+            </div>
+          </div>
+          <Link to="/admin/storage">
+            <Button size="sm" variant="secondary">
+              <span>Storage Console</span>
+              <ArrowRight className="w-3.5 h-3.5 ml-1" />
+            </Button>
+          </Link>
+        </div>
+      </div>
 
       {/* Row 3: Worker Workload Table & Project Health */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -284,38 +364,49 @@ const AdminDashboard = () => {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="border-b border-slate-100 text-slate-400 uppercase tracking-wider font-semibold text-[10px]">
-                <tr>
-                  <th className="pb-2">Worker</th>
-                  <th className="pb-2 text-center">Assigned</th>
-                  <th className="pb-2 text-center">In Progress</th>
-                  <th className="pb-2 text-center">Review</th>
-                  <th className="pb-2 text-center">Blocked</th>
-                  <th className="pb-2 text-center">Overdue</th>
-                  <th className="pb-2 text-right">Total Active</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {workers.map((w) => {
-                  const wl = w.workload || {};
-                  return (
-                    <tr key={w._id} className="hover:bg-slate-50/50">
-                      <td className="py-2.5">
-                        <span className="font-semibold text-slate-800 block">{w.name}</span>
-                        <span className="text-[10px] text-slate-400">{w.title || 'Engineer'}</span>
-                      </td>
-                      <td className="py-2.5 text-center font-medium text-slate-600">{wl.assigned || 0}</td>
-                      <td className="py-2.5 text-center font-semibold text-amber-600">{wl.inProgress || 0}</td>
-                      <td className="py-2.5 text-center font-semibold text-purple-600">{wl.awaitingReview || 0}</td>
-                      <td className="py-2.5 text-center font-semibold text-rose-600">{wl.blocked || 0}</td>
-                      <td className="py-2.5 text-center font-semibold text-rose-700">{wl.overdue || 0}</td>
-                      <td className="py-2.5 text-right font-bold text-slate-900">{wl.totalActive || 0}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            {workers.length === 0 ? (
+              <div className="py-8 text-center text-slate-400">
+                <HardHat className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                <p className="font-semibold text-slate-700">No workers created yet.</p>
+                <p className="text-[11px] text-slate-400 mb-3">Add engineering talent to your roster to allocate sprint tasks.</p>
+                <Link to="/admin/workers">
+                  <Button size="sm" variant="secondary">Add Worker</Button>
+                </Link>
+              </div>
+            ) : (
+              <table className="w-full text-left text-xs">
+                <thead className="border-b border-slate-100 text-slate-400 uppercase tracking-wider font-semibold text-[10px]">
+                  <tr>
+                    <th className="pb-2">Worker</th>
+                    <th className="pb-2 text-center">Assigned</th>
+                    <th className="pb-2 text-center">In Progress</th>
+                    <th className="pb-2 text-center">Review</th>
+                    <th className="pb-2 text-center">Blocked</th>
+                    <th className="pb-2 text-center">Overdue</th>
+                    <th className="pb-2 text-right">Total Active</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {workers.map((w) => {
+                    const wl = w.workload || {};
+                    return (
+                      <tr key={w._id} className="hover:bg-slate-50/50">
+                        <td className="py-2.5">
+                          <span className="font-semibold text-slate-800 block">{w.name}</span>
+                          <span className="text-[10px] text-slate-400">{w.title || 'Engineer'}</span>
+                        </td>
+                        <td className="py-2.5 text-center font-medium text-slate-600">{wl.assigned || 0}</td>
+                        <td className="py-2.5 text-center font-semibold text-amber-600">{wl.inProgress || 0}</td>
+                        <td className="py-2.5 text-center font-semibold text-purple-600">{wl.awaitingReview || 0}</td>
+                        <td className="py-2.5 text-center font-semibold text-rose-600">{wl.blocked || 0}</td>
+                        <td className="py-2.5 text-center font-semibold text-rose-700">{wl.overdue || 0}</td>
+                        <td className="py-2.5 text-right font-bold text-slate-900">{wl.totalActive || 0}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
 
@@ -360,6 +451,125 @@ const AdminDashboard = () => {
         </div>
       </div>
 
+      {/* Cross-Module Link: CLIENT PROJECTS → HR APPOINTMENTS */}
+      <div className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 pb-3 border-b border-slate-100">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-blue-100 text-blue-800">
+                Cross-Module
+              </span>
+              <h2 className="text-sm font-bold text-slate-900 tracking-tight">
+                CLIENT PROJECTS → HR APPOINTMENTS
+              </h2>
+            </div>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Live tracking of talent assignments and appointment status linked to client engagements
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Link to="/hr/appointments/create">
+              <Button size="sm" variant="secondary">
+                <Plus className="w-3.5 h-3.5 mr-1" />
+                <span>New Appointment</span>
+              </Button>
+            </Link>
+            <Link to="/admin/hr/appointments" className="text-xs font-semibold text-blue-600 hover:text-blue-700 ml-2">
+              View All &rarr;
+            </Link>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead>
+              <tr className="border-b border-slate-100 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                <th className="py-2.5">Project</th>
+                <th className="py-2.5">Client</th>
+                <th className="py-2.5">Required Role</th>
+                <th className="py-2.5">Candidate</th>
+                <th className="py-2.5">Appointment Status</th>
+                <th className="py-2.5 text-right">Joining Date</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {projectLinkedAppointments.length === 0 ? (
+                <tr>
+                  <td colSpan="6" className="py-8 text-center text-slate-400">
+                    No project-linked HR appointments found. Create an appointment from a project to link them.
+                  </td>
+                </tr>
+              ) : (
+                projectLinkedAppointments.slice(0, 6).map((item) => {
+                  const projectName = item.projectId?.name || item.project?.name || 'GENFREX Core';
+                  const clientName = item.clientId?.companyName || item.clientId?.name || item.client?.name || 'Internal GENFREX';
+                  const candidateName = item.candidateId?.name || item.candidate?.name || 'Unassigned';
+                  const candidateEmail = item.candidateId?.email || item.candidate?.email || '';
+
+                  return (
+                    <tr key={item._id} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="py-3 font-bold text-slate-900">
+                        {item.projectId?._id || item.project?._id ? (
+                          <Link
+                            to={`/admin/projects/${item.projectId?._id || item.project?._id}`}
+                            className="hover:text-blue-600 hover:underline"
+                          >
+                            {projectName}
+                          </Link>
+                        ) : (
+                          projectName
+                        )}
+                      </td>
+                      <td className="py-3 font-medium text-slate-700">
+                        {clientName}
+                      </td>
+                      <td className="py-3 text-slate-600 font-medium">
+                        {item.designation}
+                      </td>
+                      <td className="py-3">
+                        <span className="font-semibold text-slate-900 block">{candidateName}</span>
+                        {candidateEmail && <span className="text-[10px] text-slate-400">{candidateEmail}</span>}
+                      </td>
+                      <td className="py-3">
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                            item.status === 'APPROVED'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : item.status === 'PENDING_APPROVAL'
+                              ? 'bg-amber-100 text-amber-800'
+                              : item.status === 'SENT'
+                              ? 'bg-blue-100 text-blue-800'
+                              : item.status === 'ACCEPTED'
+                              ? 'bg-purple-100 text-purple-800'
+                              : item.status === 'REJECTED'
+                              ? 'bg-rose-100 text-rose-800'
+                              : 'bg-slate-100 text-slate-700'
+                          }`}
+                        >
+                          {item.status?.replace('_', ' ')}
+                        </span>
+                      </td>
+                      <td className="py-3 text-right font-semibold text-slate-800">
+                        {item.joiningDate ? (
+                          new Date(item.joiningDate).toLocaleDateString('en-GB', {
+                            day: '2-digit',
+                            month: 'short',
+                            year: 'numeric'
+                          })
+                        ) : (
+                          <span className="text-slate-400 italic">TBD</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       {/* Row 4: Active Projects & Activity Feed */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Projects List */}
@@ -375,34 +585,43 @@ const AdminDashboard = () => {
           </div>
 
           <div className="divide-y divide-slate-100">
-            {projects.slice(0, 5).map((project) => (
-              <div key={project._id} className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <Link
-                      to={`/admin/projects/${project._id}`}
-                      className="font-bold text-slate-900 hover:text-blue-600 transition-colors truncate"
-                    >
-                      {project.name}
-                    </Link>
-                    <Badge variant={project.health?.toLowerCase() || 'default'}>
-                      {project.health?.replace('_', ' ')}
-                    </Badge>
-                  </div>
-                  <span className="text-[10px] text-slate-400 block mt-0.5">
-                    Client: {project.client?.name} &bull; Stage: <strong>{project.stage?.replace('_', ' ')}</strong>
-                  </span>
-                </div>
-
-                <div className="w-full sm:w-48 shrink-0">
-                  <div className="flex items-center justify-between text-[10px] font-medium text-slate-600 mb-1">
-                    <span>Progress</span>
-                    <span>{project.progress}%</span>
-                  </div>
-                  <ProgressBar progress={project.progress} />
-                </div>
+            {projects.length === 0 ? (
+              <div className="py-8 text-center text-slate-400">
+                <FolderKanban className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                <p className="font-semibold text-slate-700">No projects yet.</p>
+                <p className="text-[11px] text-slate-400 mt-0.5 mb-3">Start managing client deliverables, tasks, and talent requirements.</p>
+                <Button size="sm" onClick={() => setProjectModalOpen(true)}>Create Project</Button>
               </div>
-            ))}
+            ) : (
+              projects.slice(0, 5).map((project) => (
+                <div key={project._id} className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <Link
+                        to={`/admin/projects/${project._id}`}
+                        className="font-bold text-slate-900 hover:text-blue-600 transition-colors truncate"
+                      >
+                        {project.name}
+                      </Link>
+                      <Badge variant={project.health?.toLowerCase() || 'default'}>
+                        {project.health?.replace('_', ' ')}
+                      </Badge>
+                    </div>
+                    <span className="text-[10px] text-slate-400 block mt-0.5">
+                      Client: {project.client?.name} &bull; Stage: <strong>{project.stage?.replace('_', ' ')}</strong>
+                    </span>
+                  </div>
+
+                  <div className="w-full sm:w-48 shrink-0">
+                    <div className="flex items-center justify-between text-[10px] font-medium text-slate-600 mb-1">
+                      <span>Progress</span>
+                      <span>{project.progress}%</span>
+                    </div>
+                    <ProgressBar progress={project.progress} />
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
 
@@ -415,17 +634,25 @@ const AdminDashboard = () => {
             </Link>
           </div>
 
-          <div className="relative pl-5 space-y-4 before:absolute before:left-1.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-200">
-            {activities.slice(0, 6).map((item) => (
-              <div key={item._id} className="relative text-xs">
-                <span className="absolute -left-5 top-1 h-2 w-2 rounded-full bg-blue-600 ring-4 ring-white" />
-                <p className="font-medium text-slate-800 leading-snug">{item.description}</p>
-                <span className="text-[10px] text-slate-400 block mt-0.5">
-                  {new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} &bull; {item.user?.name}
-                </span>
-              </div>
-            ))}
-          </div>
+          {activities.length === 0 ? (
+            <div className="py-8 text-center text-slate-400 text-xs">
+              <Activity className="w-6 h-6 text-slate-300 mx-auto mb-2" />
+              <p className="font-medium text-slate-600">No activities recorded yet.</p>
+              <p className="text-[11px] text-slate-400 mt-0.5">System actions and audit entries will appear here live.</p>
+            </div>
+          ) : (
+            <div className="relative pl-5 space-y-4 before:absolute before:left-1.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-200">
+              {activities.slice(0, 6).map((item) => (
+                <div key={item._id} className="relative text-xs">
+                  <span className="absolute -left-5 top-1 h-2 w-2 rounded-full bg-blue-600 ring-4 ring-white" />
+                  <p className="font-medium text-slate-800 leading-snug">{item.description}</p>
+                  <span className="text-[10px] text-slate-400 block mt-0.5">
+                    {new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} &bull; {item.user?.name}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 

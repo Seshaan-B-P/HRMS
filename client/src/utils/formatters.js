@@ -43,6 +43,8 @@ export const formatFileSize = (bytes) => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 };
 
+export const formatBytes = formatFileSize;
+
 export const formatCurrency = (amount) => {
   if (amount === undefined || amount === null) return '$0';
   return new Intl.NumberFormat('en-US', {

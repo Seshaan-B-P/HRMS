@@ -7,10 +7,27 @@ const letterTemplateSchema = new mongoose.Schema(
       required: true,
       default: 'GENFREX Trainee Appointment Letter'
     },
+    roleCategory: {
+      type: String,
+      enum: ['WEB_DEV', 'DEVOPS', 'FULL_STACK', 'UI_UX', 'QA_TESTING', 'FULL_TIME_ENG', 'INTERNSHIP', 'GENERAL'],
+      default: 'GENERAL'
+    },
+    targetRole: {
+      type: String,
+      default: 'Web Developer Trainee'
+    },
+    department: {
+      type: String,
+      default: 'Engineering'
+    },
     appointmentType: {
       type: String,
-      enum: ['TRAINEE', 'INTERNSHIP', 'FULL_TIME'],
+      enum: ['TRAINEE', 'INTERNSHIP', 'FULL_TIME', 'CONTRACT'],
       default: 'TRAINEE'
+    },
+    isDefault: {
+      type: Boolean,
+      default: false
     },
     title: {
       type: String,

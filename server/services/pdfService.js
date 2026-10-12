@@ -1,15 +1,39 @@
-const PDFDocument = require('pdfkit');
 const fs = require('fs');
 const path = require('path');
+const PDFDocument = require('pdfkit');
+
+function formatDisplayDate(val) {
+  if (!val) return 'N/A';
+  const d = new Date(val);
+  if (isNaN(d.getTime())) return String(val);
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return `${String(d.getDate()).padStart(2, '0')} ${months[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+function sanitizeText(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/[\u2013\u2014]/g, '-')
+    .replace(/[\u00A0\u202F]/g, ' ')
+    .replace(/[^\x00-\x7F]/g, '');
+}
+
+function formatFrequency(freq) {
+  if (!freq) return 'Month';
+  if (freq === 'STIPEND_MONTHLY') return 'Month (Stipend)';
+  if (freq === 'MONTHLY') return 'Month';
+  if (freq === 'ANNUAL') return 'Per Annum';
+  return freq.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+}
 
 /**
- * Generate official GENFREX Appointment Letter A4 PDF
- * @param {Object} appointment
- * @param {Object} candidate
- * @param {Object} template
- * @returns {Promise<{ filePath: string, fileName: string, fileUrl: string }>}
+ * Generates an executive 2-page Appointment Letter PDF that exactly matches
+ * the layout, typography, color palette, and structure of the client-side
+ * A4 Document Preview modal (LetterPreviewModal.jsx).
  */
-const generateAppointmentPDF = async (appointment, candidate, template = null) => {
+const generateAppointmentPDF = async (appointment, candidate = {}, template = null) => {
   return new Promise((resolve, reject) => {
     try {
       const uploadsDir = path.join(__dirname, '../uploads');
@@ -21,144 +45,191 @@ const generateAppointmentPDF = async (appointment, candidate, template = null) =
       const fileName = `GENFREX_Appointment_${safeRef}_${Date.now()}.pdf`;
       const filePath = path.join(uploadsDir, fileName);
 
+      // A4 page dimensions: 595.28 x 841.89 points
       const doc = new PDFDocument({
         size: 'A4',
-        margins: { top: 50, bottom: 50, left: 55, right: 55 },
-        bufferPages: true
+        margins: { top: 32, bottom: 32, left: 45, right: 45 },
+        bufferPages: true,
+        autoFirstPage: true
       });
 
       const writeStream = fs.createWriteStream(filePath);
       doc.pipe(writeStream);
 
-      // Colors
-      const primaryBlue = '#0052FF';
-      const darkNavy = '#0A1128';
-      const textGray = '#334155';
-      const mutedGray = '#64748B';
-      const lightBg = '#F8FAFC';
-      const borderColor = '#E2E8F0';
+      // Colors exactly matching client LetterPreviewModal.jsx
+      const cBlue600 = '#2563EB';       // Brand Blue Line / Header Logo (bg-blue-600)
+      const cBlue700 = '#1D4ED8';       // Section Headings (text-blue-700)
+      const cSlate900 = '#0F172A';      // Dark Headings & Values (text-slate-900)
+      const cSlate700 = '#334155';      // Body Text (text-slate-700)
+      const cSlate600 = '#475569';      // Secondary Text (text-slate-600)
+      const cSlate500 = '#64748B';      // Muted Subtitles (text-slate-500)
+      const cSlate400 = '#94A3B8';      // Card Labels & Headers (text-slate-400)
+      const cBorder = '#E2E8F0';        // Border (border-slate-200)
+      const cBgCard = '#F8FAFC';        // Card Background (bg-slate-50)
+      const cEmerald700 = '#047857';    // Stipend highlight (text-emerald-700)
+      const cRose600 = '#E11D48';       // Acceptance Deadline highlight (text-rose-600)
+      const cWhite = '#FFFFFF';
 
-      // --- HEADER ---
-      // Brand Bar
-      doc.rect(55, 45, 485, 3).fill(primaryBlue);
+      const leftMargin = 45;
+      const contentWidth = 505;
+      const rightEdge = leftMargin + contentWidth;
 
-      // Logo / Brand
+      const candidateName = sanitizeText(candidate.name || 'Candidate Name');
+      const candidateEmail = sanitizeText(candidate.email || 'N/A');
+      const candidatePhone = sanitizeText(candidate.phone || 'N/A');
+      const candidateAddress = sanitizeText(candidate.address || 'Bengaluru, Karnataka, India');
+      const designation = sanitizeText(appointment.designation || 'Web Developer');
+      const department = sanitizeText(appointment.department || 'Engineering');
+      const refNumber = sanitizeText(appointment.referenceNumber || 'GFX/HR/2026/0001');
+
+      const appDateStr = formatDisplayDate(appointment.appointmentDate || Date.now());
+      const joinDateStr = formatDisplayDate(appointment.joiningDate || Date.now());
+      const deadlineDateStr = formatDisplayDate(appointment.acceptanceDeadline || Date.now());
+
+      let curY = 32;
+
+      // =========================================================================
+      // PAGE 1: Header, Ref/Date, Candidate Box, Intro, 1.About, 2.Details, 3.Roles
+      // =========================================================================
+
+      // Top Blue Brand Line (matching w-full h-1 bg-blue-600 mb-6)
+      doc.rect(leftMargin, curY, contentWidth, 3.5).fill(cBlue600);
+      curY += 12;
+
+      // Document Header
+      const headerStartY = curY;
       const logoPath = path.join(__dirname, '../assets/logo.png');
       if (fs.existsSync(logoPath)) {
-        doc.image(logoPath, 55, 52, { width: 140 });
+        try {
+          doc.image(logoPath, leftMargin, curY - 2, { height: 38 });
+        } catch {
+          doc.fontSize(22).font('Helvetica-Bold').fillColor(cBlue600).text('GENFREX', leftMargin, curY);
+          doc.fontSize(7.5).font('Helvetica-Bold').fillColor(cSlate400).text('DIGITAL SERVICES & TALENT ECOSYSTEM', leftMargin, curY + 23);
+        }
       } else {
-        doc.moveDown(0.8);
-        doc.fontSize(22).font('Helvetica-Bold').fillColor(primaryBlue).text('GENFREX', 55, 55);
-        doc.fontSize(8.5).font('Helvetica').fillColor(mutedGray).text('DIGITAL SERVICES & TALENT ECOSYSTEM', 55, 80);
+        doc.fontSize(22).font('Helvetica-Bold').fillColor(cBlue600).text('GENFREX', leftMargin, curY);
+        doc.fontSize(7.5).font('Helvetica-Bold').fillColor(cSlate400).text('DIGITAL SERVICES & TALENT ECOSYSTEM', leftMargin, curY + 23);
       }
 
-      // Right-aligned company contact
-      doc.fontSize(8).font('Helvetica').fillColor(mutedGray)
-        .text('Email: genfrexofficial@gmail.com', 320, 58, { align: 'right', width: 220 })
-        .text('Web: www.genfrex.com', 320, 70, { align: 'right', width: 220 })
-        .text('Tagline: Build. Grow. Connect.', 320, 82, { align: 'right', width: 220 });
+      // Right Header text (matching LetterPreviewModal.jsx header right)
+      doc.fontSize(7.8).font('Helvetica-Bold').fillColor(cSlate700)
+        .text('Official Sender: genfrexofficial@gmail.com', leftMargin, headerStartY, { width: contentWidth, align: 'right' });
+      doc.fontSize(7.8).font('Helvetica').fillColor(cSlate500)
+        .text('Web: www.genfrex.com', leftMargin, headerStartY + 11, { width: contentWidth, align: 'right' });
+      doc.fontSize(7.8).font('Helvetica-Bold').fillColor(cBlue600)
+        .text('Build. Grow. Connect.', leftMargin, headerStartY + 22, { width: contentWidth, align: 'right' });
 
-      // Divider
-      doc.strokeColor(borderColor).lineWidth(1).moveTo(55, 98).lineTo(540, 98).stroke();
+      curY += 44;
 
-      // Document Title Box
-      doc.rect(55, 108, 485, 30).fill(lightBg);
-      doc.rect(55, 108, 485, 30).strokeColor(borderColor).lineWidth(1).stroke();
-      doc.fontSize(12).font('Helvetica-Bold').fillColor(darkNavy)
-        .text((template?.title || appointment.title || 'TRAINEE APPOINTMENT LETTER').toUpperCase(), 55, 117, {
-          align: 'center',
-          width: 485
-        });
+      // Header bottom divider border
+      doc.strokeColor(cBorder).lineWidth(0.75).moveTo(leftMargin, curY).lineTo(rightEdge, curY).stroke();
+      curY += 10;
 
-      // Ref and Date Row
-      const appDateStr = new Date(appointment.appointmentDate || Date.now()).toLocaleDateString('en-GB', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric'
-      });
-      doc.fontSize(9).font('Helvetica-Bold').fillColor(textGray).text('Ref No: ', 55, 148, { continued: true });
-      doc.font('Helvetica').text(appointment.referenceNumber || 'GFX/HR/2026/0001');
+      // Title Banner (matching bg-slate-50 border border-slate-200 rounded-md py-2.5 text-center)
+      const bannerH = 26;
+      doc.roundedRect(leftMargin, curY, contentWidth, bannerH, 4).fill(cBgCard);
+      doc.roundedRect(leftMargin, curY, contentWidth, bannerH, 4).strokeColor(cBorder).lineWidth(0.75).stroke();
+      const letterTitle = sanitizeText(appointment.title || 'TRAINEE APPOINTMENT LETTER').toUpperCase();
+      doc.fontSize(10).font('Helvetica-Bold').fillColor(cSlate900)
+        .text(letterTitle, leftMargin, curY + 7.5, { width: contentWidth, align: 'center', characterSpacing: 0.5 });
+      curY += bannerH + 11;
 
-      doc.fontSize(9).font('Helvetica-Bold').fillColor(textGray).text('Date: ', 380, 148, { continued: true });
-      doc.font('Helvetica').text(appDateStr);
+      // Ref No & Date bar (matching flex justify-between items-center text-xs font-semibold)
+      doc.fontSize(8.2).font('Helvetica').fillColor(cSlate600).text('Ref No: ', leftMargin, curY, { continued: true });
+      doc.font('Helvetica-Bold').fillColor(cSlate900).text(refNumber);
+      doc.fontSize(8.2).font('Helvetica').fillColor(cSlate600).text(`Date: ${appDateStr}`, leftMargin, curY, { width: contentWidth, align: 'right' });
+      curY += 15;
 
-      // Candidate Details Box
-      doc.rect(55, 168, 485, 68).fill(lightBg);
-      doc.rect(55, 168, 485, 68).strokeColor(borderColor).stroke();
+      // Appointed Candidate Card (matching bg-slate-50/80 border border-slate-200 rounded-lg p-3.5)
+      const candBoxH = 54;
+      doc.roundedRect(leftMargin, curY, contentWidth, candBoxH, 4).fill(cBgCard);
+      doc.roundedRect(leftMargin, curY, contentWidth, candBoxH, 4).strokeColor(cBorder).lineWidth(0.75).stroke();
 
-      doc.fontSize(8).font('Helvetica-Bold').fillColor(mutedGray).text('APPOINTED CANDIDATE', 68, 176);
-      doc.fontSize(11).font('Helvetica-Bold').fillColor(darkNavy).text(candidate.name || 'Candidate Name', 68, 190);
-      doc.fontSize(8.5).font('Helvetica').fillColor(textGray)
-        .text(`Email: ${candidate.email || 'N/A'}  |  Phone: ${candidate.phone || 'N/A'}`, 68, 205)
-        .text(`Address: ${candidate.address || 'Bengaluru, Karnataka, India'}`, 68, 218);
+      doc.fontSize(7).font('Helvetica-Bold').fillColor(cSlate400)
+        .text('APPOINTED CANDIDATE', leftMargin + 12, curY + 7, { characterSpacing: 0.5 });
+      doc.fontSize(10.5).font('Helvetica-Bold').fillColor(cSlate900)
+        .text(candidateName, leftMargin + 12, curY + 17);
+      doc.fontSize(7.8).font('Helvetica').fillColor(cSlate600)
+        .text(`Email: ${candidateEmail}   |   Phone: ${candidatePhone}   |   Address: ${candidateAddress}`, leftMargin + 12, curY + 34, { width: contentWidth - 24, lineBreak: false });
 
-      // Salutation & Intro
-      doc.fontSize(9.5).font('Helvetica-Bold').fillColor(darkNavy).text(`Dear ${candidate.name || 'Candidate'},`, 55, 250);
-      doc.fontSize(9).font('Helvetica').fillColor(textGray).lineGap(2)
+      curY += candBoxH + 11;
+
+      // Salutation & Intro (matching LetterPreviewModal.jsx)
+      doc.fontSize(8.8).font('Helvetica-Bold').fillColor(cSlate900).text(`Dear ${candidateName},`, leftMargin, curY);
+      curY += 12;
+      doc.fontSize(8.2).font('Helvetica').fillColor(cSlate700).lineGap(2.5)
         .text(
-          `On behalf of GENFREX, we are pleased to issue this Trainee Appointment Letter appointing you as ${appointment.designation} in our ${appointment.department} department. We welcome you to our digital services and talent ecosystem and look forward to your valuable contributions.`,
-          55,
-          266,
-          { width: 485, align: 'justify' }
+          `On behalf of GENFREX, we are pleased to issue this Trainee Appointment Letter appointing you as ${designation} in our ${department} department. We welcome you to our digital services and talent ecosystem and look forward to your valuable contributions.`,
+          leftMargin,
+          curY,
+          { width: contentWidth, align: 'justify' }
         );
+      curY += 30;
 
-      // Section: ABOUT GENFREX
-      let curY = 312;
-      doc.fontSize(9.5).font('Helvetica-Bold').fillColor(primaryBlue).text('1. ABOUT GENFREX', 55, curY);
-      curY += 14;
-      const aboutText = template?.aboutGenfrex ||
-        'GENFREX is a premier digital services and talent ecosystem committed to empowering enterprises and innovators with cutting-edge software engineering, scalable digital products, and high-impact technical solutions. We bridge industry demands with world-class engineering capabilities.';
-      doc.fontSize(8.5).font('Helvetica').fillColor(textGray).lineGap(2)
-        .text(aboutText, 55, curY, { width: 485, align: 'justify' });
+      // 1. About GENFREX (matching text-xs font-bold text-blue-700)
+      doc.fontSize(8.8).font('Helvetica-Bold').fillColor(cBlue700).text('1. ABOUT GENFREX', leftMargin, curY);
+      curY += 11;
+      const aboutText = 'GENFREX is a next-generation digital services and talent ecosystem committed to empowering enterprises and innovators with cutting-edge engineering, scalable digital products, and high-impact talent solutions. We bridge industry demands with world-class technical capabilities to build robust, modern digital solutions.';
+      doc.fontSize(8).font('Helvetica').fillColor(cSlate600).lineGap(2.5)
+        .text(aboutText, leftMargin, curY, { width: contentWidth, align: 'justify' });
+      curY += 36;
 
-      // Section: APPOINTMENT DETAILS (Table)
-      curY += 48;
-      doc.fontSize(9.5).font('Helvetica-Bold').fillColor(primaryBlue).text('2. APPOINTMENT DETAILS', 55, curY);
-      curY += 14;
+      // 2. Appointment Details Grid (matching text-xs font-bold text-blue-700 and 8-row table)
+      doc.fontSize(8.8).font('Helvetica-Bold').fillColor(cBlue700).text('2. APPOINTMENT DETAILS', leftMargin, curY);
+      curY += 11;
 
-      const joiningDateStr = new Date(appointment.joiningDate).toLocaleDateString('en-GB', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric'
-      });
-      const deadlineDateStr = new Date(appointment.acceptanceDeadline).toLocaleDateString('en-GB', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric'
-      });
-
-      const detailsData = [
-        ['Designation / Role', appointment.designation, 'Department', appointment.department],
-        ['Employment Type', appointment.appointmentType || 'Trainee', 'Working Mode', appointment.workLocation || 'Remote / Hybrid'],
-        ['Date of Joining', joiningDateStr, 'Reporting Manager', appointment.reportingManager || 'Engineering Lead'],
-        ['Compensation / Stipend', `INR ${Number(appointment.compensation).toLocaleString('en-IN')} / ${appointment.compensationFrequency || 'Month'}`, 'Acceptance Deadline', deadlineDateStr]
+      const detailsRows = [
+        { label: 'Designation / Role:', val: designation, isBold: true, color: cSlate900 },
+        { label: 'Department:', val: department, isBold: false, color: cSlate900 },
+        { label: 'Employment Type:', val: sanitizeText(appointment.appointmentType || 'TRAINEE'), isBold: false, color: cSlate900 },
+        { label: 'Date of Joining:', val: joinDateStr, isBold: true, color: cBlue700 },
+        { label: 'Work Location / Mode:', val: sanitizeText(appointment.workLocation || 'Remote / Hybrid'), isBold: false, color: cSlate900 },
+        { label: 'Reporting Manager:', val: sanitizeText(appointment.reportingManager || 'Engineering Lead'), isBold: false, color: cSlate900 },
+        {
+          label: 'Stipend / Compensation:',
+          val: `INR ${Number(appointment.compensation || 0).toLocaleString('en-IN')} / ${formatFrequency(appointment.compensationFrequency)}`,
+          isBold: true,
+          color: cEmerald700
+        },
+        { label: 'Acceptance Deadline:', val: deadlineDateStr, isBold: true, color: cRose600 }
       ];
 
-      const rowH = 18;
-      const colW1 = 110;
-      const colW2 = 132;
-      const colW3 = 110;
-      const colW4 = 133;
+      const rowH = 17;
+      const colLabelW = 180;
+      const colValW = contentWidth - colLabelW;
 
-      detailsData.forEach((row, idx) => {
-        const yPos = curY + idx * rowH;
-        const bg = idx % 2 === 0 ? lightBg : '#FFFFFF';
-        doc.rect(55, yPos, 485, rowH).fill(bg);
-        doc.rect(55, yPos, 485, rowH).strokeColor(borderColor).stroke();
+      // Table outer frame
+      doc.roundedRect(leftMargin, curY, contentWidth, detailsRows.length * rowH, 3).strokeColor(cBorder).lineWidth(0.75).stroke();
 
-        doc.fontSize(8).font('Helvetica-Bold').fillColor(textGray).text(row[0], 62, yPos + 5, { width: colW1 - 10 });
-        doc.fontSize(8).font('Helvetica').fillColor(darkNavy).text(row[1], 55 + colW1 + 5, yPos + 5, { width: colW2 - 10 });
-        doc.fontSize(8).font('Helvetica-Bold').fillColor(textGray).text(row[2], 55 + colW1 + colW2 + 5, yPos + 5, { width: colW3 - 10 });
-        doc.fontSize(8).font('Helvetica').fillColor(darkNavy).text(row[3], 55 + colW1 + colW2 + colW3 + 5, yPos + 5, { width: colW4 - 10 });
+      detailsRows.forEach((row, idx) => {
+        const rowY = curY + idx * rowH;
+        // Alternating background
+        if (idx % 2 === 0) {
+          doc.rect(leftMargin, rowY, contentWidth, rowH).fill(cBgCard);
+        } else {
+          doc.rect(leftMargin, rowY, contentWidth, rowH).fill(cWhite);
+        }
+        // Row divider
+        if (idx < detailsRows.length - 1) {
+          doc.strokeColor(cBorder).lineWidth(0.5).moveTo(leftMargin, rowY + rowH).lineTo(rightEdge, rowY + rowH).stroke();
+        }
+
+        // Label
+        doc.fontSize(8).font('Helvetica').fillColor(cSlate600)
+          .text(row.label, leftMargin + 10, rowY + 4.5, { width: colLabelW - 10, lineBreak: false });
+
+        // Value
+        doc.fontSize(8).font(row.isBold ? 'Helvetica-Bold' : 'Helvetica').fillColor(row.color)
+          .text(row.val, leftMargin + colLabelW, rowY + 4.5, { width: colValW - 10, lineBreak: false });
       });
 
-      curY += detailsData.length * rowH + 14;
+      curY += detailsRows.length * rowH + 13;
 
-      // Section: ROLE & RESPONSIBILITIES
-      doc.fontSize(9.5).font('Helvetica-Bold').fillColor(primaryBlue).text('3. ROLE & RESPONSIBILITIES', 55, curY);
-      curY += 14;
+      // 3. Role & Responsibilities (matching text-xs font-bold text-blue-700)
+      doc.fontSize(8.8).font('Helvetica-Bold').fillColor(cBlue700).text('3. ROLE & RESPONSIBILITIES', leftMargin, curY);
+      curY += 12;
 
-      const responsibilities = (appointment.responsibilities && appointment.responsibilities.length > 0)
+      const rawResp = (appointment.responsibilities && appointment.responsibilities.length > 0)
         ? appointment.responsibilities
         : (template?.roleAndResponsibilities || [
             'Execute assigned technical tasks, modules, and software features in alignment with GENFREX quality standards.',
@@ -167,107 +238,142 @@ const generateAppointmentPDF = async (appointment, candidate, template = null) =
             'Continuously enhance technical proficiencies and adhere to best development and security practices.'
           ]);
 
-      responsibilities.forEach((resp) => {
-        doc.fontSize(8).font('Helvetica-Bold').fillColor(primaryBlue).text('•', 65, curY);
-        doc.fontSize(8.5).font('Helvetica').fillColor(textGray).text(resp, 76, curY, { width: 464, align: 'justify' });
-        curY += 15;
+      rawResp.forEach((resp) => {
+        const cleanResp = sanitizeText(resp);
+        doc.circle(leftMargin + 6, curY + 4.5, 2).fill(cBlue600);
+        doc.fontSize(8).font('Helvetica').fillColor(cSlate600).lineGap(2)
+          .text(cleanResp, leftMargin + 16, curY, { width: contentWidth - 18, align: 'justify' });
+        curY += 17;
       });
 
-      // --- PAGE 2 ---
+      // =========================================================================
+      // PAGE 2: 4. Terms, 5. Conf, 6. Conduct, 7. Acceptance, 3 Signatures Grid
+      // =========================================================================
       doc.addPage();
 
-      // Top brand strip on Page 2
-      doc.rect(55, 45, 485, 2).fill(primaryBlue);
-      doc.fontSize(8).font('Helvetica-Bold').fillColor(mutedGray)
-        .text('GENFREX  |  TRAINEE APPOINTMENT LETTER', 55, 52)
-        .text(`Ref: ${appointment.referenceNumber}`, 350, 52, { align: 'right', width: 190 });
-      doc.strokeColor(borderColor).lineWidth(0.5).moveTo(55, 64).lineTo(540, 64).stroke();
+      let p2Y = 32;
 
-      let p2Y = 75;
+      // Top Blue Brand Line on Page 2
+      doc.rect(leftMargin, p2Y, contentWidth, 3.5).fill(cBlue600);
+      p2Y += 10;
 
-      // Section: TERMS & CONDITIONS
-      doc.fontSize(9.5).font('Helvetica-Bold').fillColor(primaryBlue).text('4. TERMS & CONDITIONS', 55, p2Y);
-      p2Y += 14;
+      // Running Header on Page 2
+      doc.fontSize(7.5).font('Helvetica-Bold').fillColor(cSlate400)
+        .text('GENFREX  |  DIGITAL SERVICES & TALENT ECOSYSTEM  |  APPOINTMENT LETTER', leftMargin, p2Y)
+        .text(`Ref: ${refNumber}`, 350, p2Y, { align: 'right', width: 200 });
+      p2Y += 12;
+      doc.strokeColor(cBorder).lineWidth(0.5).moveTo(leftMargin, p2Y).lineTo(rightEdge, p2Y).stroke();
+      p2Y += 16;
 
-      const terms = (appointment.terms && appointment.terms.length > 0)
+      // 4. Terms & Conditions (matching text-xs font-bold text-blue-700 on Page 2)
+      doc.fontSize(8.8).font('Helvetica-Bold').fillColor(cBlue700).text('4. TERMS & CONDITIONS', leftMargin, p2Y);
+      p2Y += 13;
+
+      const rawTerms = (appointment.terms && appointment.terms.length > 0)
         ? appointment.terms
         : (template?.termsAndConditions || [
             'Appointment Status: This appointment is for training and professional development within the GENFREX ecosystem. Successful completion of the trainee period may lead to performance-based full-time consideration.',
-            'Working Hours & Mode: The trainee shall adhere to the agreed schedule and mode of engagement (Remote, Hybrid, or On-site) specified in the appointment details.',
+            'Working Hours & Mode: The trainee shall adhere to the agreed schedule and mode of engagement specified in the appointment details.',
             'Compensation: A monthly stipend/compensation shall be disbursed in accordance with GENFREX payroll schedules, subject to statutory deductions where applicable.',
             'Notice Period: Either party may terminate this trainee engagement by providing a written notice of 15 days or compensation in lieu thereof during the trainee period.'
           ]);
 
-      terms.forEach((term, idx) => {
-        doc.fontSize(8.5).font('Helvetica-Bold').fillColor(darkNavy).text(`4.${idx + 1}`, 60, p2Y);
-        doc.fontSize(8.5).font('Helvetica').fillColor(textGray).text(term, 80, p2Y, { width: 460, align: 'justify' });
-        p2Y += 26;
+      rawTerms.forEach((term, idx) => {
+        const cleanTerm = sanitizeText(term);
+        doc.fontSize(8.2).font('Helvetica-Bold').fillColor(cSlate900).text(`${idx + 1}.`, leftMargin + 4, p2Y);
+        doc.fontSize(8.2).font('Helvetica').fillColor(cSlate600).lineGap(2.5)
+          .text(cleanTerm, leftMargin + 18, p2Y, { width: contentWidth - 20, align: 'justify' });
+        p2Y += 28;
       });
 
-      p2Y += 5;
+      p2Y += 6;
 
-      // Section: CONFIDENTIALITY & DATA PROTECTION
-      doc.fontSize(9.5).font('Helvetica-Bold').fillColor(primaryBlue).text('5. CONFIDENTIALITY & DATA PROTECTION', 55, p2Y);
-      p2Y += 14;
-      const confText = appointment.confidentialityTerms || template?.confidentialityClause ||
-        'The Trainee acknowledges that during the tenure of this appointment, they may have access to confidential, proprietary, trade secret, client data, and intellectual property belonging to GENFREX or its affiliated clients. The Trainee agrees to hold all such information in strict confidence and shall not disclose, replicate, reverse-engineer, or misuse any proprietary data without prior written authorization from GENFREX. This obligation survives the termination or expiration of this appointment.';
-      doc.fontSize(8.5).font('Helvetica').fillColor(textGray).lineGap(1.5)
-        .text(confText, 55, p2Y, { width: 485, align: 'justify' });
+      // 5. Confidentiality & Data Protection
+      doc.fontSize(8.8).font('Helvetica-Bold').fillColor(cBlue700).text('5. CONFIDENTIALITY & DATA PROTECTION', leftMargin, p2Y);
+      p2Y += 12;
+      const confDesc = sanitizeText(appointment.confidentialityTerms || template?.confidentialityClause ||
+        'The Trainee acknowledges that during the tenure of this appointment, they may have access to confidential, proprietary, trade secret, client data, and intellectual property belonging to GENFREX or its affiliated clients. The Trainee agrees to hold all such information in strict confidence and shall not disclose, replicate, reverse-engineer, or misuse any proprietary data without prior written authorization from GENFREX. This obligation survives the termination or expiration of this appointment.'
+      );
+      doc.fontSize(8.2).font('Helvetica').fillColor(cSlate600).lineGap(2.5)
+        .text(confDesc, leftMargin, p2Y, { width: contentWidth, align: 'justify' });
+      p2Y += 54;
 
-      p2Y += 52;
-
-      // Section: PROFESSIONAL CONDUCT & COMPLIANCE
-      doc.fontSize(9.5).font('Helvetica-Bold').fillColor(primaryBlue).text('6. PROFESSIONAL CONDUCT & COMPLIANCE', 55, p2Y);
-      p2Y += 14;
-      const conductText = appointment.professionalConductTerms || template?.professionalConductClause ||
-        'The Trainee agrees to maintain the highest standards of professional integrity, diligence, and ethical conduct. Non-compliance with company policies, willful misconduct, breach of client trust, or unauthorized external representation of GENFREX may result in immediate revocation of this appointment.';
-      doc.fontSize(8.5).font('Helvetica').fillColor(textGray).lineGap(1.5)
-        .text(conductText, 55, p2Y, { width: 485, align: 'justify' });
-
+      // 6. Professional Conduct & Compliance
+      doc.fontSize(8.8).font('Helvetica-Bold').fillColor(cBlue700).text('6. PROFESSIONAL CONDUCT & COMPLIANCE', leftMargin, p2Y);
+      p2Y += 12;
+      const conductDesc = sanitizeText(appointment.professionalConductTerms || template?.professionalConductClause ||
+        'The Trainee agrees to maintain the highest standards of professional integrity, diligence, and ethical conduct. Non-compliance with company policies, willful misconduct, breach of client trust, or unauthorized external representation of GENFREX may result in immediate revocation of this appointment.'
+      );
+      doc.fontSize(8.2).font('Helvetica').fillColor(cSlate600).lineGap(2.5)
+        .text(conductDesc, leftMargin, p2Y, { width: contentWidth, align: 'justify' });
       p2Y += 46;
 
-      // Section: ACCEPTANCE
-      doc.fontSize(9.5).font('Helvetica-Bold').fillColor(primaryBlue).text('7. ACCEPTANCE & ACKNOWLEDGEMENT', 55, p2Y);
-      p2Y += 14;
-      const acceptText = template?.acceptanceTerms ||
-        'Please signify your acceptance of this Trainee Appointment Letter and its incorporated terms by signing and returning the duplicate copy on or before the acceptance deadline mentioned herein.';
-      doc.fontSize(8.5).font('Helvetica').fillColor(textGray).lineGap(1.5)
-        .text(acceptText, 55, p2Y, { width: 485, align: 'justify' });
+      // 7. Acceptance & Acknowledgement
+      doc.fontSize(8.8).font('Helvetica-Bold').fillColor(cBlue700).text('7. ACCEPTANCE & ACKNOWLEDGEMENT', leftMargin, p2Y);
+      p2Y += 12;
+      const acceptDesc = `Please signify your acceptance of this Trainee Appointment Letter and its incorporated terms by signing and returning the duplicate copy on or before ${deadlineDateStr}.`;
+      doc.fontSize(8.2).font('Helvetica').fillColor(cSlate600).lineGap(2.5)
+        .text(acceptDesc, leftMargin, p2Y, { width: contentWidth, align: 'justify' });
+      p2Y += 36;
 
-      p2Y += 40;
+      // Divider line before Signatories (matching pt-6 border-t border-slate-200 mt-8 in LetterPreviewModal.jsx)
+      const dividerY = Math.max(p2Y + 10, 520);
+      doc.strokeColor(cBorder).lineWidth(0.75).moveTo(leftMargin, dividerY).lineTo(rightEdge, dividerY).stroke();
 
-      // Authorized Signatories & Candidate Acceptance Grid
-      doc.rect(55, p2Y, 485, 105).fill(lightBg);
-      doc.rect(55, p2Y, 485, 105).strokeColor(borderColor).stroke();
+      // Signatories & Candidate Acceptance Grid (matching 3-box grid in LetterPreviewModal.jsx)
+      const sigCardY = dividerY + 20;
+      const sigCardH = 150;
+      const cardGap = 12;
+      const cardW = (contentWidth - cardGap * 2) / 3;
 
-      // Signatory 1: P.S. Dharshan
-      doc.fontSize(8).font('Helvetica-Bold').fillColor(mutedGray).text('AUTHORIZED SIGNATORY', 70, p2Y + 10);
-      doc.fontSize(9.5).font('Helvetica-Bold').fillColor(darkNavy).text('P.S. Dharshan', 70, p2Y + 45);
-      doc.fontSize(8).font('Helvetica').fillColor(textGray).text('Founder', 70, p2Y + 58);
-      doc.fontSize(7.5).font('Helvetica').fillColor(mutedGray).text('GENFREX Ecosystem', 70, p2Y + 70);
+      // Card 1: Authorized Signatory - P.S. Dharshan
+      const x1 = leftMargin;
+      doc.roundedRect(x1, sigCardY, cardW, sigCardH, 4).fill(cBgCard);
+      doc.roundedRect(x1, sigCardY, cardW, sigCardH, 4).strokeColor(cBorder).lineWidth(0.75).stroke();
+      doc.fontSize(7.5).font('Helvetica-Bold').fillColor(cSlate400).text('AUTHORIZED SIGNATORY', x1 + 12, sigCardY + 12);
+      doc.strokeColor(cBorder).lineWidth(0.5).moveTo(x1 + 12, sigCardY + 80).lineTo(x1 + cardW - 12, sigCardY + 80).stroke();
+      doc.fontSize(10).font('Helvetica-Bold').fillColor(cSlate900).text('P.S. Dharshan', x1 + 12, sigCardY + 92);
+      doc.fontSize(8).font('Helvetica').fillColor(cSlate600).text('Founder', x1 + 12, sigCardY + 108);
+      doc.fontSize(7.5).font('Helvetica').fillColor(cSlate400).text('GENFREX Ecosystem', x1 + 12, sigCardY + 122);
 
-      // Signatory 2: Deepak P
-      doc.fontSize(8).font('Helvetica-Bold').fillColor(mutedGray).text('AUTHORIZED SIGNATORY', 230, p2Y + 10);
-      doc.fontSize(9.5).font('Helvetica-Bold').fillColor(darkNavy).text('Deepak P', 230, p2Y + 45);
-      doc.fontSize(8).font('Helvetica').fillColor(textGray).text('Chief Operating Officer', 230, p2Y + 58);
-      doc.fontSize(7.5).font('Helvetica').fillColor(mutedGray).text('GENFREX Ecosystem', 230, p2Y + 70);
+      // Card 2: Authorized Signatory - Deepak P
+      const x2 = leftMargin + cardW + cardGap;
+      doc.roundedRect(x2, sigCardY, cardW, sigCardH, 4).fill(cBgCard);
+      doc.roundedRect(x2, sigCardY, cardW, sigCardH, 4).strokeColor(cBorder).lineWidth(0.75).stroke();
+      doc.fontSize(7.5).font('Helvetica-Bold').fillColor(cSlate400).text('AUTHORIZED SIGNATORY', x2 + 12, sigCardY + 12);
+      doc.strokeColor(cBorder).lineWidth(0.5).moveTo(x2 + 12, sigCardY + 80).lineTo(x2 + cardW - 12, sigCardY + 80).stroke();
+      doc.fontSize(10).font('Helvetica-Bold').fillColor(cSlate900).text('Deepak P', x2 + 12, sigCardY + 92);
+      doc.fontSize(8).font('Helvetica').fillColor(cSlate600).text('Chief Operating Officer', x2 + 12, sigCardY + 108);
+      doc.fontSize(7.5).font('Helvetica').fillColor(cSlate400).text('GENFREX Ecosystem', x2 + 12, sigCardY + 122);
 
-      // Candidate Acceptance Signature
-      doc.fontSize(8).font('Helvetica-Bold').fillColor(mutedGray).text('CANDIDATE ACCEPTANCE', 390, p2Y + 10);
-      doc.strokeColor('#94A3B8').lineWidth(0.8).dash(3, { space: 3 })
-        .moveTo(390, p2Y + 45).lineTo(525, p2Y + 45).stroke();
-      doc.undash();
-      doc.fontSize(8).font('Helvetica-Bold').fillColor(darkNavy).text(candidate.name || 'Candidate Signature', 390, p2Y + 52);
-      doc.fontSize(7.5).font('Helvetica').fillColor(mutedGray).text('Signature & Date', 390, p2Y + 65);
+      // Card 3: Candidate Acceptance
+      const x3 = leftMargin + (cardW + cardGap) * 2;
+      doc.roundedRect(x3, sigCardY, cardW, sigCardH, 4).fill(cBgCard);
+      doc.roundedRect(x3, sigCardY, cardW, sigCardH, 4).strokeColor(cBorder).lineWidth(0.75).stroke();
+      doc.fontSize(7.5).font('Helvetica-Bold').fillColor(cSlate400).text('CANDIDATE ACCEPTANCE', x3 + 12, sigCardY + 12);
+      doc.fontSize(7.5).font('Helvetica-Oblique').fillColor(cSlate500).text('Signature & Date', x3 + 12, sigCardY + 68);
+      doc.save();
+      doc.strokeColor(cSlate400).lineWidth(0.75).dash(2.5, { space: 2.5 })
+        .moveTo(x3 + 12, sigCardY + 80).lineTo(x3 + cardW - 12, sigCardY + 80).stroke();
+      doc.restore();
+      doc.fontSize(10).font('Helvetica-Bold').fillColor(cSlate900).text(candidateName, x3 + 12, sigCardY + 92);
+      doc.fontSize(7.5).font('Helvetica').fillColor(cSlate400).text('Appointed Trainee', x3 + 12, sigCardY + 108);
 
-      // --- PAGE NUMBERING ON ALL PAGES ---
+      // Document Footers on All Pages (matching LetterPreviewModal.jsx bottom footer)
       const range = doc.bufferedPageRange();
-      for (let i = range.start; i < range.start + range.count; i++) {
+      const totalPages = range.count;
+
+      for (let i = range.start; i < range.start + totalPages; i++) {
         doc.switchToPage(i);
-        doc.strokeColor(borderColor).lineWidth(0.5).moveTo(55, 800).lineTo(540, 800).stroke();
-        doc.fontSize(7.5).font('Helvetica').fillColor(mutedGray)
-          .text('GENFREX Confidential  |  Unified Business Management Platform', 55, 808)
-          .text(`Page ${i + 1} of ${range.count}`, 350, 808, { align: 'right', width: 190 });
+        const originalBottomMargin = doc.page.margins.bottom;
+        doc.page.margins.bottom = 0;
+
+        doc.strokeColor(cBorder).lineWidth(0.5).moveTo(leftMargin, 796).lineTo(rightEdge, 796).stroke();
+        doc.fontSize(7.5).font('Helvetica').fillColor(cSlate400)
+          .text('GENFREX Confidential  |  Internal Appointment Document', leftMargin, 804, { lineBreak: false });
+        doc.text(`Page ${i + 1} of ${totalPages}`, 350, 804, { align: 'right', width: 200, lineBreak: false });
+
+        doc.page.margins.bottom = originalBottomMargin;
       }
 
       doc.end();
@@ -276,7 +382,8 @@ const generateAppointmentPDF = async (appointment, candidate, template = null) =
         resolve({
           filePath,
           fileName,
-          fileUrl: `/uploads/${fileName}`
+          fileUrl: `/uploads/${fileName}`,
+          pageCount: totalPages
         });
       });
 
@@ -290,5 +397,7 @@ const generateAppointmentPDF = async (appointment, candidate, template = null) =
 };
 
 module.exports = {
-  generateAppointmentPDF
+  generateAppointmentPDF,
+  sanitizeText,
+  formatDisplayDate
 };

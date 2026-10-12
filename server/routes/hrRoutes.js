@@ -7,6 +7,7 @@ const {
   getCandidateById,
   createCandidate,
   updateCandidate,
+  linkCandidateToProject,
   deleteCandidate
 } = require('../controllers/candidateController');
 
@@ -30,7 +31,10 @@ const {
   getHRAuditLogs,
   getHRSettings,
   updateHRSettings,
-  updateLetterTemplate
+  getLetterTemplates,
+  createLetterTemplate,
+  updateLetterTemplate,
+  deleteLetterTemplate
 } = require('../controllers/hrReportsController');
 
 // All HR routes require authentication and strictly allow ADMIN or HR roles only
@@ -46,6 +50,8 @@ router.route('/candidates/:id')
   .get(getCandidateById)
   .put(updateCandidate)
   .delete(deleteCandidate);
+
+router.post('/candidates/:id/link-project', linkCandidateToProject);
 
 // --- APPOINTMENT LETTER ROUTES ---
 router.route('/appointments')
@@ -73,6 +79,12 @@ router.get('/audit-logs', getHRAuditLogs);
 // --- SETTINGS & TEMPLATES ---
 router.get('/settings', getHRSettings);
 router.put('/settings', authorizeRoles('ADMIN'), updateHRSettings);
+
+// Master Role Templates
+router.get('/templates', getLetterTemplates);
+router.post('/templates', authorizeRoles('ADMIN'), createLetterTemplate);
+router.put('/templates/:id', authorizeRoles('ADMIN'), updateLetterTemplate);
+router.delete('/templates/:id', authorizeRoles('ADMIN'), deleteLetterTemplate);
 router.put('/template', authorizeRoles('ADMIN'), updateLetterTemplate);
 
 module.exports = router;
