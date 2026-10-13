@@ -30,6 +30,7 @@ import AdminSettings from './pages/admin/AdminSettings';
 import AdminStorage from './pages/admin/AdminStorage';
 import AdminPendingApprovals from './pages/admin/AdminPendingApprovals';
 import AdminHRReports from './pages/admin/AdminHRReports';
+import AdminInvoices from './pages/admin/AdminInvoices';
 
 // HR Pages
 import HRDashboard from './pages/hr/HRDashboard';
@@ -38,6 +39,7 @@ import CreateAppointment from './pages/hr/CreateAppointment';
 import AppointmentDetails from './pages/hr/AppointmentDetails';
 import AppointmentsList from './pages/hr/AppointmentsList';
 import HRSettings from './pages/hr/HRSettings';
+import HRAttendanceLeaves from './pages/hr/HRAttendanceLeaves';
 
 // Worker Pages
 import WorkerDashboard from './pages/worker/WorkerDashboard';
@@ -47,6 +49,7 @@ import WorkerProjects from './pages/worker/WorkerProjects';
 import WorkerFiles from './pages/worker/WorkerFiles';
 import WorkerActivity from './pages/worker/WorkerActivity';
 import WorkerProfile from './pages/worker/WorkerProfile';
+import WorkerAttendance from './pages/worker/WorkerAttendance';
 
 // Client Pages
 import ClientDashboard from './pages/client/ClientDashboard';
@@ -58,6 +61,7 @@ import ClientFiles from './pages/client/ClientFiles';
 import ClientActivity from './pages/client/ClientActivity';
 import ClientNotifications from './pages/client/ClientNotifications';
 import ClientProfile from './pages/client/ClientProfile';
+import ClientInvoices from './pages/client/ClientInvoices';
 
 function App() {
   return (
@@ -119,6 +123,8 @@ function App() {
             <Route path="users" element={<AdminUsers />} />
             <Route path="tasks" element={<AdminTasks />} />
             <Route path="files" element={<AdminFiles />} />
+            <Route path="invoices" element={<AdminInvoices />} />
+            <Route path="attendance-leaves" element={<HRAttendanceLeaves />} />
             <Route path="reports" element={<AdminReports />} />
             <Route path="activities" element={<AdminActivities />} />
             <Route path="notifications" element={<AdminNotifications />} />
@@ -149,6 +155,7 @@ function App() {
           >
             <Route index element={<Navigate to="/hr/dashboard" replace />} />
             <Route path="dashboard" element={<HRDashboard />} />
+            <Route path="attendance-leaves" element={<HRAttendanceLeaves />} />
             <Route path="candidates" element={<Candidates />} />
             <Route path="appointments" element={<AppointmentsList />} />
             <Route path="appointments/create" element={<CreateAppointment />} />
@@ -169,6 +176,7 @@ function App() {
           >
             <Route index element={<Navigate to="/worker/dashboard" replace />} />
             <Route path="dashboard" element={<WorkerDashboard />} />
+            <Route path="attendance" element={<WorkerAttendance />} />
             <Route path="tasks" element={<WorkerTasks />} />
             <Route path="tasks/:id" element={<WorkerTaskDetails />} />
             <Route path="projects" element={<WorkerProjects />} />
@@ -188,6 +196,7 @@ function App() {
           >
             <Route index element={<Navigate to="/client/dashboard" replace />} />
             <Route path="dashboard" element={<ClientDashboard />} />
+            <Route path="invoices" element={<ClientInvoices />} />
             <Route path="projects" element={<ClientProjects />} />
             <Route path="projects/:id" element={<ClientProjectDetails />} />
             <Route path="task-requests" element={<ClientTaskRequests />} />

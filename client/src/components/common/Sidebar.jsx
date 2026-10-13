@@ -53,13 +53,15 @@ const Sidebar = ({ isOpen, onClose }) => {
         { label: 'Projects', path: '/admin/projects', icon: FolderKanban },
         { label: 'Tasks & Milestones', path: '/admin/tasks', icon: CheckSquare },
         { label: 'Task Requests', path: '/admin/task-requests', icon: Inbox },
-        { label: 'Deliverables', path: '/admin/files', icon: Files }
+        { label: 'Deliverables', path: '/admin/files', icon: Files },
+        { label: 'Invoices & Finance', path: '/admin/invoices', icon: FileText }
       ]
     },
     {
       group: 'PEOPLE',
       items: [
         { label: 'User Management', path: '/admin/users', icon: Users },
+        { label: 'Attendance & Leaves', path: '/admin/attendance-leaves', icon: Clock },
         { label: 'Workers', path: '/admin/workers', icon: HardHat },
         { label: 'Clients', path: '/admin/clients', icon: Users },
         { label: 'HR Team', path: '/admin/hr-team', icon: UserCheck }
@@ -96,6 +98,7 @@ const Sidebar = ({ isOpen, onClose }) => {
       group: 'HR WORKSPACE',
       items: [
         { label: 'Dashboard', path: '/hr/dashboard', icon: LayoutDashboard },
+        { label: 'Attendance & Leaves', path: '/hr/attendance-leaves', icon: Clock },
         { label: 'Candidates', path: '/hr/candidates', icon: UserPlus },
         { label: 'Create Appointment', path: '/hr/appointments/create', icon: FilePlusIcon },
         { label: 'My Drafts', path: '/hr/appointments?status=DRAFT', icon: FileText },
@@ -114,6 +117,7 @@ const Sidebar = ({ isOpen, onClose }) => {
       group: 'ENGINEERING',
       items: [
         { label: 'Dashboard', path: '/worker/dashboard', icon: LayoutDashboard },
+        { label: 'Attendance & Leaves', path: '/worker/attendance', icon: Clock },
         { label: 'My Tasks', path: '/worker/tasks', icon: CheckSquare },
         { label: 'Assigned Projects', path: '/worker/projects', icon: FolderKanban },
         { label: 'Deliverables & Files', path: '/worker/files', icon: Files },
@@ -129,6 +133,7 @@ const Sidebar = ({ isOpen, onClose }) => {
       group: 'CLIENT PORTAL',
       items: [
         { label: 'Dashboard', path: '/client/dashboard', icon: LayoutDashboard },
+        { label: 'Billing & Invoices', path: '/client/invoices', icon: FileText },
         { label: 'My Projects', path: '/client/projects', icon: FolderKanban },
         { label: 'Task Requests', path: '/client/task-requests', icon: Inbox },
         { label: 'Project Tasks', path: '/client/tasks', icon: CheckSquare },

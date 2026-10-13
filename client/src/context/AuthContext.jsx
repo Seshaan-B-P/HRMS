@@ -69,7 +69,12 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const logout = () => {
+  const logout = async () => {
+    try {
+      await authService.logout();
+    } catch (e) {
+      console.warn('Logout notification error:', e.message);
+    }
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     setToken(null);

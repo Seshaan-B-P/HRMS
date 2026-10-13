@@ -4,6 +4,7 @@
   "private": true,
   "description": "ClientFlow - Modern Client Collaboration & Project Portal",
   "scripts": {
+    "dev": "npm run server:dev",
     "install:all": "npm install && npm install --prefix server && npm install --prefix client",
     "server": "npm run start --prefix server",
     "server:dev": "npm run dev --prefix server",
